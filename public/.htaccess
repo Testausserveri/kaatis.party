@@ -1,0 +1,10 @@
+Options +Indexes
+IndexOptions HTMLTable FancyIndexing 
+DefaultIcon /icons/unknown.png
+DefaultIcon /icons/box1.png
+AddIcon /icons/dir.png ^^DIRECTORY^^
+#AddIcon /icons/back.gif *PARENT*
+AddIcon /icons/image2.png .gif .jpg .png
+AddIcon /icons/movie.png .mp4 .avi
+IndexIgnore icons
+
