@@ -1,0 +1,27 @@
+{
+  "name": "kaatisbot",
+  "version": "1.0.0",
+  "description": "hyvää kontenttia/good content",
+  "main": "index.js",
+  "dependencies": {
+    "discord.js": "^12.5.3",
+    "dotenv": "^9.0.2"
+  },
+  "devDependencies": {
+    "eslint": "^7.27.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-plugin-import": "^2.23.3"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "kaatis",
+    "testausserveri",
+    "highlife"
+  ],
+  "author": "awwry",
+  "license": "MIT"
+}
