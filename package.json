@@ -2,8 +2,10 @@
   "name": "kaatisbot",
   "version": "1.0.0",
   "description": "hyvää kontenttia/good content",
+  "type": "module",
   "main": "index.js",
   "dependencies": {
+    "axios": "^0.21.1",
     "discord.js": "^12.5.3",
     "dotenv": "^9.0.2"
   },
