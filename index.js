@@ -27,10 +27,14 @@ client
     if (!attachment || !attachment.width || !attachment.height) return
     if (attachment.size > 8e6) return
 
-    const prettyFileName = `${alphanum(attachment.name)}`
-    if (prettyFileName.length > 30) return
+    // filename is either made of the message included with the attacments (+ file ext.), or its filename if no message provided
+    const cleanFileName = (msg.content.length > 0 ?
+      alphanum(`${msg.content.trim()}.${attachment.name.split('.').pop()}`)
+      : alphanum(attachment.name)
+    );
+    if (cleanFileName.length > 30) return
 
-    const filePath = path.join(process.env.UPLOAD_DIR, prettyFileName)
+    const filePath = path.join(process.env.UPLOAD_DIR, cleanFileName)
 
     fsp.access(filePath)
       .then(() => msg.author.send('Tämän niminen tiedosto on jo lähetetty kaatikseen!'))
@@ -41,7 +45,7 @@ client
       })
         .then((response) => response.data.pipe(fs.createWriteStream(filePath)))
         .then(() => fsp.appendFile(process.env.HTACCESS_PATH,
-          `AddDescription ${prettyFileName} ${alphanum(msg.author.username)}-${msg.author.discriminator}`)))
+          `AddDescription "${alphanum(msg.author.username)}" ${cleanFileName}\n`)))
   })
 
 client.login(process.env.DISCORD_BOT_TOKEN)
