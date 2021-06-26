@@ -10,7 +10,7 @@ Liven up your community!
 
 - Sent memes are **saved to disk**. 🗃️✅
 
-- The names of the saved files are **intelligently deducted** from message content or left as-is. The names are also **automatically** sanitized and truncated. 🥶🪄
+- The names of the saved files are **intelligently deducted** from message content or left as-is. The names are also **automatically** sanitized and truncated. 🥶🤤
 
 - Archived memes can be viewed from a minimalist **Apache file listing**. How dank! 🚀🙌
 
