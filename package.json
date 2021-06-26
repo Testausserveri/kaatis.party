@@ -1,6 +1,6 @@
 {
-  "name": "kaatisbot",
-  "version": "1.0.0",
+  "name": "kaatisbotti",
+  "version": "1.1.0",
   "description": "hyvää kontenttia/good content",
   "type": "module",
   "main": "index.js",

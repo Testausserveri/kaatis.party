@@ -21,6 +21,11 @@ const htaccessPath = process.env.HTACCESS_PATH || 'public/.htaccess'
 
 const client = new Client()
 
+client.on('ready', async () => {
+  // Notice: npm_package_version is only available if the application is launched with npm start
+  client.user.setActivity(`v${process.env.npm_package_version}`)
+})
+
 client.on('message', async (message) => {
   if (message.channel.id !== memeChannelId) return
 
@@ -71,6 +76,8 @@ client.on('message', async (message) => {
       // The name of the uploader of the file is shown in Apache directory listing
       fsp.appendFile(htaccessPath,
         `AddDescription "${utils.alphanum(message.author.username)}" ${availableFilename}\n`)
+
+      console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     }
   } catch (e) {
     const errorMessage = await message.reply(`Kuvaasi ei voitu lähettää kaatikseen: ${e.message}`)
