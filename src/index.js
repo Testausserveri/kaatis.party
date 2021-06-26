@@ -29,50 +29,52 @@ client.on('message', async (message) => {
 
   const contentRows = message.content.split('\n')
 
-  for (const attachmentItem of message.attachments) {
-    const [, attachment] = attachmentItem
+  try {
+    for (const attachmentItem of message.attachments) {
+      const [, attachment] = attachmentItem
 
-    const [filename, extension] = utils.separateExtension(attachment.name)
+      const [filename, extension] = utils.separateExtension(attachment.name)
 
-    // no
-    if (extension.length > 5) return
+      // Users can only upload pictures, videos and other files with allowed extensions
+      if (!utils.isPictureOrVideo(attachment) && !additionalExtensions.includes(extension)) return
 
-    // No extra benefits for Nitro users currently!
-    if (attachment.size > 8e6) {
-      message.react('💾')
-      return
+      // no
+      if (extension.length > 5) throw new Error('tiedostopääte on virheellinen')
+
+      // No extra benefits for Nitro users currently!
+      if (attachment.size > 8e6) throw new Error('tiedoston koko on liian suuri')
+
+      // If the message includes text content, meme name will be taken from it.
+      // If a user is uploading multiple files, they can name each of them
+      // by separating their names to different rows.
+      let memeName = contentRows.shift() || filename
+
+      // Try to automatically shorten the meme name if it's too long
+      const maxMemeNameLength = maxFilenameLength - extension.length - 1
+      if (memeName.length > maxMemeNameLength) {
+        memeName = memeName.slice(0, -(memeName.length - maxMemeNameLength))
+      }
+
+      // Sanitize the meme name and find an available file path for it
+      const availableFilename = await utils.findAvailableFilename(uploadDirectory,
+        utils.alphanum(`${memeName}.${extension}`))
+      const filePath = path.join(uploadDirectory, availableFilename)
+
+      // Download the meme file from Discord's CDN and write it to disk
+      const { data: rawMeme } = await axios({
+        method: 'get',
+        url: attachment.attachment,
+        responseType: 'stream',
+      })
+      rawMeme.pipe(fs.createWriteStream(filePath))
+
+      // The name of the uploader of the file is shown in Apache directory listing
+      fsp.appendFile(htaccessPath,
+        `AddDescription "${utils.alphanum(message.author.username)}" ${availableFilename}\n`)
     }
-
-    // Users can only upload pictures, videos and other files with allowed extensions
-    if (!utils.isPictureOrVideo(attachment) && !additionalExtensions.includes(extension)) return
-
-    // If the message includes text content, meme name will be taken from it.
-    // If a user is uploading multiple files, they can name each of them
-    // by separating their names to different rows.
-    let memeName = contentRows.shift() || filename
-
-    // Try to automatically shorten the meme name if it's too long
-    const maxMemeNameLength = maxFilenameLength - extension.length - 1
-    if (memeName.length > maxMemeNameLength) {
-      memeName = memeName.slice(0, -(memeName.length - maxMemeNameLength))
-    }
-
-    // Sanitize the meme name and find an available file path for it
-    const availableFilename = await utils.findAvailableFilename(uploadDirectory,
-      utils.alphanum(`${memeName}.${extension}`))
-    const filePath = path.join(uploadDirectory, availableFilename)
-
-    // Download the meme file from Discord's CDN and write it to disk
-    const { data: rawMeme } = await axios({
-      method: 'get',
-      url: attachment.attachment,
-      responseType: 'stream',
-    })
-    rawMeme.pipe(fs.createWriteStream(filePath))
-
-    // The name of the uploader of the file is shown in Apache directory listing
-    fsp.appendFile(htaccessPath,
-      `AddDescription "${utils.alphanum(message.author.username)}" ${availableFilename}\n`)
+  } catch (e) {
+    const errorMessage = await message.reply(`Kuvaasi ei voitu lähettää kaatikseen: ${e.message}`)
+    client.setTimeout(() => errorMessage.delete(), 30000)
   }
 })
 
