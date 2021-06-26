@@ -2,6 +2,7 @@ Options +Indexes
 IndexOptions HTMLTable FancyIndexing 
 DefaultIcon /icons/unknown.png
 DefaultIcon /icons/box1.png
+IndexOrderDefault Descending Date
 AddIcon /icons/dir.png ^^DIRECTORY^^
 #AddIcon /icons/back.gif *PARENT*
 AddIcon /icons/image2.png .gif .jpg .png
