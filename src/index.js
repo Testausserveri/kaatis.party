@@ -9,7 +9,7 @@ import axios from 'axios'
 
 import * as utils from './utils.js'
 
-const maxFilenameLength = 23
+const maxFilenameLength = 123
 const additionalExtensions = ['mp3', 'wav', 'ogg']
 
 dotenv.config()
