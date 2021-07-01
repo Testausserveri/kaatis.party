@@ -34,14 +34,12 @@ client.on('message', async (message) => {
 
   const contentRows = message.content.split('\n')
 
-  try {
-    for (const attachmentItem of message.attachments) {
-      const [, attachment] = attachmentItem
-
+  for (const attachment of message.attachments.values()) {
+    try {
       const [filename, extension] = utils.separateExtension(attachment.name)
 
       // Users can only upload pictures, videos and other files with allowed extensions
-      if (!utils.isPictureOrVideo(attachment) && !additionalExtensions.includes(extension)) return
+      if (!utils.isPictureOrVideo(attachment) && !additionalExtensions.includes(extension)) continue
 
       // no
       if (extension.length > 5) throw new Error('tiedostopääte on virheellinen')
@@ -78,10 +76,10 @@ client.on('message', async (message) => {
         `AddDescription "${utils.alphanum(message.author.username)}" ${availableFilename}\n`)
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
+    } catch (e) {
+      const errorMessage = await message.reply(`Kuvaasi ei voitu lähettää kaatikseen: ${e.message}`)
+      client.setTimeout(() => errorMessage.delete(), 30000)
     }
-  } catch (e) {
-    const errorMessage = await message.reply(`Kuvaasi ei voitu lähettää kaatikseen: ${e.message}`)
-    client.setTimeout(() => errorMessage.delete(), 30000)
   }
 })
 
