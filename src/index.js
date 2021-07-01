@@ -1,6 +1,7 @@
 /* eslint-disable no-await-in-loop */
 
 import { Client } from 'discord.js'
+import translatedMessages from './i18n.js'
 import dotenv from 'dotenv'
 import fs from 'fs'
 import fsp from 'fs/promises'
@@ -18,6 +19,9 @@ const memeChannelId = process.env.MEME_CHANNEL_ID
 const token = process.env.DISCORD_BOT_TOKEN
 const uploadDirectory = process.env.UPLOAD_DIR || 'public/'
 const htaccessPath = process.env.HTACCESS_PATH || 'public/.htaccess'
+const selectedLanguage = process.env.LANGUAGE || 'english'
+
+const selectedTranslations = translatedMessages[selectedLanguage]
 
 const client = new Client()
 
@@ -42,10 +46,10 @@ client.on('message', async (message) => {
       if (!utils.isPictureOrVideo(attachment) && !additionalExtensions.includes(extension)) continue
 
       // no
-      if (extension.length > 5) throw new Error('tiedostopääte on virheellinen')
+      if (extension.length > 5) throw new Error(selectedTranslations.invalidExtension)
 
       // No extra benefits for Nitro users currently!
-      if (attachment.size > 8e6) throw new Error('tiedoston koko on liian suuri')
+      if (attachment.size > 8e6) throw new Error(selectedTranslations.tooBigFile)
 
       // If the message includes text content, meme name will be taken from it.
       // If a user is uploading multiple files, they can name each of them
@@ -77,7 +81,7 @@ client.on('message', async (message) => {
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     } catch (e) {
-      const errorMessage = await message.reply(`Kuvaasi ei voitu lähettää kaatikseen: ${e.message}`)
+      const errorMessage = await message.reply(`${selectedTranslations.uploadError}: ${e.message}`)
       client.setTimeout(() => errorMessage.delete(), 30000)
     }
   }
