@@ -9,8 +9,8 @@ services:
       - .:/home/node/app
     command: npm start
   http:
-    image: bitnami/apache:latest
+    image: ghcr.io/testausserveri/arm64v8-apache2:latest
     volumes:
-      - ./public/:/app
-    ports: 
-      - 8080:8080
+      - ./public/:/var/www/html/
+    ports:
+      - 8080:80
