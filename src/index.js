@@ -49,7 +49,7 @@ client.on('message', async (message) => {
       if (extension.length > 5) throw new Error(selectedTranslations.invalidExtension)
 
       // No extra benefits for Nitro users currently!
-      if (attachment.size > 8e6) throw new Error(selectedTranslations.tooBigFile)
+      // if (attachment.size > 8e6) throw new Error(selectedTranslations.tooBigFile)
 
       // If the message includes text content, meme name will be taken from it.
       // If a user is uploading multiple files, they can name each of them
