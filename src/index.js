@@ -61,10 +61,10 @@ client.on('message', async (message) => {
       if (memeName.length > maxMemeNameLength) {
         memeName = memeName.slice(0, -(memeName.length - maxMemeNameLength))
       }
-
+      
       // Sanitize the meme name and find an available file path for it
       const availableFilename = await utils.findAvailableFilename(uploadDirectory,
-        utils.alphanum(`${memeName}.${extension}`))
+        (utils.alphanum(memeName) || "nimetön") + "." + utils.alphanum(extension))
       const filePath = path.join(uploadDirectory, availableFilename)
 
       // Download the meme file from Discord's CDN and write it to disk
@@ -77,7 +77,7 @@ client.on('message', async (message) => {
 
       // The name of the uploader of the file is shown in Apache directory listing
       fsp.appendFile(htaccessPath,
-        `AddDescription "${utils.alphanum(message.author.username)}" ${availableFilename}\n`)
+        `AddDescription "${utils.alphanum(message.author.username) || "matti"}" ${availableFilename}\n`)
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     } catch (e) {
