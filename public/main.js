@@ -167,7 +167,6 @@ const openMedia = (media) => {
     card.querySelector('.title').innerText = media.name;
     card.querySelector('.creator').innerText = media.creator;
     card.querySelector('.modified').innerText = media.modified;
-    card.querySelector('.size').innerText = media.size;
     card.querySelector('.url').href = media.url;
     
     card.querySelector('.close').addEventListener('click', closeMedia);
