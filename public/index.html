@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Kaatis Party - Discord meme catalog</title>
+</head>
+<body>
+    <header>
+        <nav>
+            <div id="logo">
+                <span class="desktop">Kaatis Party</span>
+            </div>
+        </nav>
+    </header>
+    <main id="main" class="loading">
+        <section id="open-card" class="closed">
+            <div class="card-content">
+                <div class="media"></div>
+                <div class="info">
+                    <div class="title-row">
+                        <h2 class="title"></h2>
+                        <button class="close">&times;</button>
+                    </div>
+                    <p>Creator: <b class="creator"></b></p>
+                    <p>Modified: <b class="modified"></b></p>
+                    <p>Size: <b class="size"></b></p>
+                    <p><a class="url" target="_blank">Download</a></p>
+                </div>
+            </div>
+        </section>
+        <section id="media-elements"></section>
+        <h2 id="loading">Loading...</h2>
+    </main>
+    <footer id="footer">
+        <p>&copy; Testausserveri (insert current year from 2024)</p>
+    </footer>
+<script src="main.js"></script>
+</body>
+</html>
