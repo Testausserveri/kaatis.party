@@ -1,28 +1,71 @@
-const mediaUrl = 'http://localhost:8000/indexpage.html'
-const baseUrl = 'https://kaatis.party'
+const mediaUrl = '/indeksi.csv'
+const baseUrl = 'https://kaatis.party/'
 const mediaCount = 100;
+const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif'];
+const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v', '3gp', 'ogv'];
+const audioExtensions = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'aiff'];
+
 let mediaOpened = 0;
 const globalKeywords = {};
 let creatingMedia = false;
 let mediaElements = [];
 
-const extractType = (url, filename) => {
-    const matches = url.match(/([a-z]+)[0-9]*\.[a-z0-9]+$/);
+const extractType = (path) => {
+    // Get the extension
+    let matches = path.match(/.+\.([a-zA-Z0-9]+)$/);
     if (matches === null || matches.length < 2) {
         return 'unknown';
     }
 
-    if (matches[1] === 'unknown') {
-        // Patch some known cases
+    const extension = matches[1].toLowerCase();
 
-        // Webp images
-        if (filename.match(/\.webp$/i)) {
-            return 'image';
-        }
+    if (imageExtensions.includes(extension)) {
+        return 'image';
+    } else if (videoExtensions.includes(extension)) {
+        return 'video';
+    } else if (audioExtensions.includes(extension)) {
+        return 'audio';
+    } else {
+        return 'unknown';
     }
-
-    return matches[1];
 };
+
+// Function code from here: https://stackoverflow.com/a/14991797 with CC BY-SA 4.0 license
+function parseCSV(str) {
+    const arr = [];
+    let quote = false;  // 'true' means we're inside a quoted field
+
+    // Iterate over each character, keep track of current row and column (of the returned array)
+    for (let row = 0, col = 0, c = 0; c < str.length; c++) {
+        let cc = str[c], nc = str[c+1];        // Current character, next character
+        arr[row] = arr[row] || [];             // Create a new row if necessary
+        arr[row][col] = arr[row][col] || '';   // Create a new column (start with empty string) if necessary
+
+        // If the current character is a quotation mark, and we're inside a
+        // quoted field, and the next character is also a quotation mark,
+        // add a quotation mark to the current column and skip the next character
+        if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+
+        // If it's just one quotation mark, begin/end quoted field
+        if (cc == '"') { quote = !quote; continue; }
+
+        // If it's a comma and we're not in a quoted field, move on to the next column
+        if (cc == ',' && !quote) { ++col; continue; }
+
+        // If it's a newline (CRLF) and we're not in a quoted field, skip the next character
+        // and move on to the next row and move to column 0 of that new row
+        if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+
+        // If it's a newline (LF or CR) and we're not in a quoted field,
+        // move on to the next row and move to column 0 of that new row
+        if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+        if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+
+        // Otherwise, append the current character to the current column
+        arr[row][col] += cc;
+    }
+    return arr;
+}
 
 const readableFilename = (filename) => {
     // Remove extension and use 
@@ -51,31 +94,25 @@ const readableFilename = (filename) => {
 const getMedia = async () => {
     // Fetch the Apache directory listing and parse it to media object
     const response = await fetch(mediaUrl).then(res => res.text());
-    const parser = new DOMParser();
-    const root = parser.parseFromString(response, 'text/html').querySelector('body>table');
+
+    // Parse the CSV file
+    const csv = parseCSV(response).reverse();
+
+    console.log(csv)
 
     const media = [];
-    root.querySelectorAll('tr').forEach((row, index) => {
-        if (index === 0) return;
+    csv.forEach((row, index) => {
+        // CSV rows: path, username, date
+        let [path, creator, modified] = row;
 
-        const cells = row.querySelectorAll('td');
-        if (cells.length < 5) return;
+        // console.log({path, creator, modified})
 
-        const type = extractType(cells[0].querySelector('img').src, cells[1].textContent.trim());
-        const {name, keywords} = readableFilename(cells[1].textContent.trim());
-        console.log(cells[1].querySelector('a').href)
-        const url = baseUrl + (new URL(cells[1].querySelector('a').href).pathname);
-        const modified = cells[2].textContent.trim();
-        const size = cells[3].textContent.trim();
-        let creator = cells[4].textContent.trim();
-
-        if (creator === '') {
-            // Null patch for creator
-            creator = null;
-        }
+        const type = extractType(path);
+        const {name, keywords} = readableFilename(path);
+        const url = `${baseUrl}${path}`;
 
         const currentId = media.length;
-        // console.log({currentId, type, name, keywords, url, modified, size, creator})
+        console.log({currentId, type, name, keywords, url, modified, creator})
 
         // Add each keyword to the global keywords list
         keywords.forEach(keyword => {
@@ -92,7 +129,6 @@ const getMedia = async () => {
             keywords,
             url,
             modified,
-            size,
             creator,
         });
     });
@@ -149,14 +185,14 @@ const getMediaElement = (item, playable) => {
         mediaImage.alt = item.name;
         mediaImage.setAttribute('loading', 'lazy');
         elements.push(mediaImage);
-    } else if (item.type === 'movie' || item.type === 'video') {
+    } else if (item.type === 'video') {
         const mediaVideo = document.createElement('video');
         mediaVideo.src = item.url;
         mediaVideo.controls = playable;
         mediaVideo.autoplay = playable;
         mediaVideo.setAttribute('loading', 'lazy');
         elements.push(mediaVideo);
-    } else if (item.type === 'sound') {
+    } else if (item.type === 'audio') {
         // Also add title text
         const mediaPre = document.createElement('p');
         mediaPre.textContent = 'Audio:';
@@ -237,4 +273,7 @@ getMedia().then((media) => {
     document.getElementById('media-elements').classList.remove('loading');
     createMediaElements(media.slice(0, mediaCount));
     mediaElements = media.slice(mediaCount);
+}).catch((error) => {
+    console.error('Error fetching media:', error);
+    document.getElementById('loading').innerText = 'Not workingz :(';
 });
