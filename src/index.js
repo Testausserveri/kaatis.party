@@ -19,6 +19,7 @@ const memeChannelId = process.env.MEME_CHANNEL_ID
 const token = process.env.DISCORD_BOT_TOKEN
 const uploadDirectory = process.env.UPLOAD_DIR || 'public/'
 const htaccessPath = process.env.HTACCESS_PATH || 'public/.htaccess'
+const indexPath = process.env.INDEX_PATH || 'public/indeksi.csv'
 const selectedLanguage = process.env.LANGUAGE || 'english'
 
 const selectedTranslations = translatedMessages[selectedLanguage]
@@ -78,6 +79,10 @@ client.on('message', async (message) => {
       // The name of the uploader of the file is shown in Apache directory listing
       fsp.appendFile(htaccessPath,
         `AddDescription "${utils.alphanum(message.author.username) || "matti"}" ${availableFilename}\n`)
+
+      // Add item to the index
+      fsp.appendFile(indexPath,
+        `"${availableFilename}";"${message.author.username}";"${utils.currentTimestamp()}"\n`)
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     } catch (e) {
