@@ -37,3 +37,5 @@ export const findAvailableFilename = async (folder, fullFilename) => {
     if (!fs.existsSync(path.join(folder, filename))) return filename
   }
 }
+
+export const currentTimestamp = () => new Date().toISOString().replace('T', ' ').replace('Z', '0000000000')
