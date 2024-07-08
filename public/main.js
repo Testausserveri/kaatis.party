@@ -133,6 +133,7 @@ const getMedia = async () => {
         });
     });
 
+    media.sort((a, b) => new Date(b.modified) - new Date(a.modified))
     return media;
 }
 
