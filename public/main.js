@@ -112,7 +112,7 @@ const getMedia = async () => {
         const url = `${baseUrl}${path}`;
 
         const currentId = media.length;
-        console.log({currentId, type, name, keywords, url, modified, creator})
+        // console.log({currentId, type, name, keywords, url, modified, creator})
 
         // Add each keyword to the global keywords list
         keywords.forEach(keyword => {
@@ -219,7 +219,7 @@ const getMediaElement = (item, playable) => {
         console.warn('Unknown type', item.type, item)
         const mediaTitle = document.createElement('p');
         mediaTitle.textContent = `Unknown: item.name`;
-        elements.push(mediaTitle);
+        // elements.push(mediaTitle);
     }
 
     return elements;
@@ -236,9 +236,11 @@ const createMediaElements = (media) => {
         mediaElement.classList.add('media-item');
         mediaElement.addEventListener('click', () => openMedia(item));
 
-        getMediaElement(item, false).forEach(element => mediaElement.appendChild(element));
-
-        mediaContainer.appendChild(mediaElement);
+        const medias = getMediaElement(item, false);
+        if (medias.length > 0) {
+            medias.forEach(element => mediaElement.appendChild(element));
+            mediaContainer.appendChild(mediaElement);
+        }
     });
 
     creatingMedia = false;
