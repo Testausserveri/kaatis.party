@@ -82,7 +82,7 @@ client.on('message', async (message) => {
 
       // Add item to the index
       fsp.appendFile(indexPath,
-        `"${availableFilename}";"${message.author.username}";"${utils.currentTimestamp()}"\n`)
+        `"${availableFilename}","${message.author.username}","${utils.currentTimestamp()}"\n`)
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     } catch (e) {
