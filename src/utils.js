@@ -4,7 +4,7 @@ import path from 'path'
 // kiitti hegez
 export const alphanum = (s) => s.normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/[^a-zA-Z0-9_*+=()-\.]/g, '-')
+  .replace(/[^a-zA-Z0-9_*+=()\.-]/g, '-')
   .split('-')
   .filter((x) => x !== '')
   .join('-')
