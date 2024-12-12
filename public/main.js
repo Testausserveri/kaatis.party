@@ -225,25 +225,16 @@ const getMediaElement = (item, playable) => {
     return elements;
 }
 
-const createMediaElements = (media) => {
-    if (creatingMedia) return;
-    creatingMedia = true;
-
-    console.log(media)
-    const mediaContainer = document.getElementById('media-elements');
-    media.forEach((item) => {
-        const mediaElement = document.createElement('div');
-        mediaElement.classList.add('media-item');
-        mediaElement.addEventListener('click', () => openMedia(item));
-
-        const medias = getMediaElement(item, false);
-        if (medias.length > 0) {
-            medias.forEach(element => mediaElement.appendChild(element));
-            mediaContainer.appendChild(mediaElement);
+const onVisible = (element, callback) => {
+    new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if(entry.intersectionRatio > 0) {
+                callback(element);
+                observer.disconnect();
         }
-    });
-
-    creatingMedia = false;
+        });
+    }).observe(element);
+    if(!callback) return new Promise(r => callback=r);
 }
 
 const isOnScreen = (element) => {
@@ -251,6 +242,53 @@ const isOnScreen = (element) => {
     const viewHeight = Math.max(document.documentElement.clientHeight, window.innerHeight);
     return !(rect.bottom < 0 || rect.top - viewHeight >= 0);
 }
+
+const createMediaElements = (media) => {
+    if (creatingMedia) return;
+    creatingMedia = true;
+
+    console.log(media)
+    const mediaContainer = document.getElementById('media-elements');
+    media.forEach((item, index) => {
+        const mediaElement = document.createElement('div');
+        mediaElement.dataset.loaded = false;
+        mediaElement.dataset.index = index;
+        mediaElement.classList.add('media-item');
+        mediaElement.addEventListener('click', () => openMedia(item));
+
+        const info = document.createElement('div');
+        info.classList.add('media-search-info')
+        info.innerText = `${item.name} by ${item.creator} on ${item.modified}`;
+        mediaElement.appendChild(info);
+
+        //const medias = getMediaElement(item, false);
+        //if (medias.length > 0) {
+        //    medias.forEach(element => mediaElement.appendChild(element));
+        //}
+        mediaContainer.appendChild(mediaElement);
+ 
+        // When element is visible on viewport, load the media
+        new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.intersectionRatio > 0) {
+                    // Debounce 200ms
+                    setTimeout(() => {
+                        if (!isOnScreen(mediaElement)) return;
+
+                        const medias = getMediaElement(item, false);
+                        medias.forEach(element => mediaElement.appendChild(element));
+                        mediaElement.dataset.loaded = true;
+                        info.classList.add('invisible');
+                        observer.disconnect();
+                    }, 200);
+                }
+            });
+        }).observe(mediaElement);
+   });
+
+    creatingMedia = false;
+}
+
 
 // Attach scroll event to load more media if footer is seen
 window.addEventListener('scroll', () => {
@@ -273,8 +311,9 @@ document.querySelector('#open-card').addEventListener('click', (event) => {
 getMedia().then((media) => {
     document.getElementById('loading').remove();
     document.getElementById('media-elements').classList.remove('loading');
-    createMediaElements(media.slice(0, mediaCount));
-    mediaElements = media.slice(mediaCount);
+    createMediaElements(media);
+    //createMediaElements(media.slice(0, mediaCount));
+    //mediaElements = media.slice(mediaCount);
 }).catch((error) => {
     console.error('Error fetching media:', error);
     document.getElementById('loading').innerText = 'Not workingz :(';
