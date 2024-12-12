@@ -107,6 +107,23 @@ footer {
     text-align: center;
 }
 
+.media-search-info {
+    position: absolute;
+    z-index: -1;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    top: 0;
+    margin: auto;
+    height: min-content;
+    width: 20rem;
+    overflow: hidden;
+}
+
+.media-search-info.invisible {
+    opacity: 0;
+}
+
 #open-card {
     position: fixed;
     top: 0;
