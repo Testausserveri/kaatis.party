@@ -34,8 +34,8 @@ client.on('ready', async () => {
 client.on('message', async (message) => {
   if (message.channel.id !== memeChannelId) return
 
-  // The attachments of messages that are prefixed with '#' are not processed
-  if (message.content.startsWith('#')) return
+  // The attachments of messages that are prefixed with '!' are not processed
+  if (message.content.startsWith('!')) return
 
   const contentRows = message.content.split('\n')
 
