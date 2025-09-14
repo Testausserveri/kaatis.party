@@ -37,6 +37,9 @@ client.on('message', async (message) => {
   // The attachments of messages that are prefixed with '!' are not processed
   if (message.content.startsWith('!')) return
 
+  // Ignore messages by bots (kameli encoding videos)
+  if (message.author.bot) return
+
   const contentRows = message.content.split('\n')
 
   for (const attachment of message.attachments.values()) {
