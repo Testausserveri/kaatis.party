@@ -24,7 +24,9 @@ const selectedLanguage = process.env.LANGUAGE || 'english'
 
 const selectedTranslations = translatedMessages[selectedLanguage]
 
-const client = new Client()
+// 'MESSAGE'/'CHANNEL' partials make messageDelete fire for messages that
+// aren't in the cache (e.g. anything uploaded before the last bot restart).
+const client = new Client({ partials: ['MESSAGE', 'CHANNEL'] })
 
 client.on('ready', async () => {
   // Notice: npm_package_version is only available if the application is launched with npm start
@@ -85,7 +87,7 @@ client.on('message', async (message) => {
 
       // Add item to the index
       fsp.appendFile(indexPath,
-        `"${availableFilename}","${message.author.username}","${utils.currentTimestamp()}"\n`)
+        `"${availableFilename}","${message.author.username}","${utils.currentTimestamp()}","${message.id}"\n`)
 
       console.log(`Successfully uploaded ${availableFilename} by ${message.author.tag}`)
     } catch (e) {
@@ -93,6 +95,65 @@ client.on('message', async (message) => {
       client.setTimeout(() => errorMessage.delete(), 30000)
     }
   }
+})
+
+// Returns filenames from the index that belong to the given message ID.
+// Rows without a 4th column (old uploads) are ignored.
+async function filenamesForMessage(messageId) {
+  try {
+    const lines = (await fsp.readFile(indexPath, 'utf8')).split('\n')
+    const filenames = []
+    for (const line of lines) {
+      const fields = line.match(/"([^"]*)"/g)
+      if (fields && fields.length >= 4 && fields[3].slice(1, -1) === messageId) {
+        filenames.push(fields[0].slice(1, -1))
+      }
+    }
+    return filenames
+  } catch (e) {
+    if (e.code === 'ENOENT') return []
+    throw e
+  }
+}
+
+// Rewrites the file keeping only the lines for which shouldRemove returns false.
+// A missing file is treated as already clean.
+async function removeLines(filePath, shouldRemove) {
+  try {
+    const content = await fsp.readFile(filePath, 'utf8')
+    const filtered = content
+      .split('\n')
+      .filter((line) => !shouldRemove(line))
+      .join('\n')
+    await fsp.writeFile(filePath, filtered)
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e
+  }
+}
+
+client.on('messageDelete', async (message) => {
+  if (message.channel.id !== memeChannelId) return
+
+  const filenames = new Set(await filenamesForMessage(message.id))
+  if (filenames.size === 0) return
+
+  // Delete the files from disk
+  for (const filename of filenames) {
+    try {
+      await fsp.unlink(path.join(uploadDirectory, filename))
+      console.log(`Deleted ${filename} (message ${message.id} deleted)`)
+    } catch (e) {
+      console.error(`Failed to delete ${filename}: ${e.message}`)
+    }
+  }
+
+  // Scrub their metadata regardless of whether the files were still on disk.
+  // .htaccess lines end with the filename; index rows start with "filename",
+  await removeLines(htaccessPath, (line) => filenames.has(line.split(' ').pop()))
+  await removeLines(indexPath, (line) => {
+    const match = line.match(/^"([^"]*)",/)
+    return match !== null && filenames.has(match[1])
+  })
 })
 
 client.login(token)

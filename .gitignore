@@ -6,3 +6,4 @@ public/*
 !public/main.js
 !public/style.css
 .env
+docker-compose.override.yml

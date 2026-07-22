@@ -1,5 +1,5 @@
 const mediaUrl = '/indeksi.csv'
-const baseUrl = 'https://kaatis.party/'
+const baseUrl = window.location.hostname === 'kaatis.party' ? 'https://kaatis.party/' : '/'
 const mediaCount = 100;
 const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif'];
 const videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'm4v', '3gp', 'ogv'];
