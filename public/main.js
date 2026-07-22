@@ -102,7 +102,7 @@ const getMedia = async () => {
 
     const media = [];
     csv.forEach((row, index) => {
-        // CSV rows: path, username, date
+        // CSV rows: path, username, date, discordMessageId (id is unused here)
         let [path, creator, modified] = row;
 
         // console.log({path, creator, modified})
