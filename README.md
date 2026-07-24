@@ -26,6 +26,7 @@ Prerequisites: Docker, modern Node runtime
 1. Install the dependencies of the bot: `npm install`.
 
 2. Rename `.example.env` to `.env` and fill in the fields. You can set the language of the bot by setting the environment variable `LANGUAGE` to either `english` or `finnish`. Upload directory (`UPLOAD_DIR`), htaccess path (`HTACCESS_PATH`) and index path (`INDEX_PATH`) are also configurable.
+Note: By default, all images by bots and webhooks are ignored. However, webhooks can be allowlisted in a comma-separated list as `ALLOWED_WEBHOOK_IDS`. 
 
    > The index (`indeksi.csv`) records the Discord message ID of each upload. This is what lets the bot delete the right file when a message is deleted, so uploads made before this file existed cannot be auto-deleted.
 
