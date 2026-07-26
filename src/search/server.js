@@ -3,7 +3,8 @@ import { getSearchConfig } from './config.js'
 import { createGeminiClient, embedQuery } from './gemini.js'
 import { deleteMediaFilesFromIndex, indexMediaFile } from './indexer.js'
 import { pointIdForFilename } from './media.js'
-import { createQdrantClient, pointToSearchResult } from './qdrant.js'
+import { createQdrantClient } from './qdrant.js'
+import { createMediaStore, mediaToApiItem } from '../mediaStore.js'
 
 const sendJson = (response, statusCode, body) => {
   response.writeHead(statusCode, {
@@ -24,15 +25,38 @@ export const parseExcludedFilenames = (value) => new Set(String(value || '')
   .map((filename) => filename.trim())
   .filter(Boolean))
 
-const searchResults = ({ points, excludedFilenames, limit }) => points
-  .filter((point) => !excludedFilenames.has(point.payload?.filename))
-  .slice(0, limit)
-  .map(pointToSearchResult)
+const pointFilename = (point) => point.payload?.filename || ''
 
-const similarResults = ({ points, filename, limit }) => points
-  .filter((point) => point.payload?.filename !== filename)
-  .slice(0, limit)
-  .map(pointToSearchResult)
+const hydratePointResults = ({
+  points,
+  store,
+  config,
+  excludedFilenames = new Set(),
+  limit,
+}) => {
+  const filenames = points
+    .map(pointFilename)
+    .filter((filename) => filename && !excludedFilenames.has(filename))
+  const mediaByFilename = store.mediaByFilenames(filenames)
+  const results = []
+
+  for (const point of points) {
+    const filename = pointFilename(point)
+    if (!filename || excludedFilenames.has(filename)) continue
+
+    const row = mediaByFilename.get(filename)
+    if (!row) continue
+
+    results.push({
+      ...mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl }),
+      score: point.score,
+    })
+
+    if (results.length >= limit) break
+  }
+
+  return results
+}
 
 const normalizeQuery = (query) => String(query || '').trim().replace(/\s+/g, ' ')
 
@@ -276,6 +300,7 @@ export const createSearchHandler = ({
   embedQueryFn = embedQuery,
   deleteMediaFilesFromIndexFn = deleteMediaFilesFromIndex,
   indexMediaFileFn = indexMediaFile,
+  store = createMediaStore(config.mediaDbPath),
 } = {}) => {
   const getQueryEmbedding = createQueryEmbeddingCache({ client, config, embedQueryFn })
   const rateLimiter = createRateLimiter({ config })
@@ -378,6 +403,23 @@ export const createSearchHandler = ({
       return
     }
 
+    if (url.pathname === '/api/media') {
+      const limit = url.searchParams.has('limit')
+        ? parseLimit({ value: url.searchParams.get('limit'), config })
+        : Number.POSITIVE_INFINITY
+      const offset = Math.max(0, Math.trunc(Number(url.searchParams.get('offset') || 0)) || 0)
+      const media = store.listMedia()
+        .slice(offset, offset + limit)
+        .map((row) => mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl }))
+
+      sendJson(response, 200, {
+        count: media.length,
+        offset,
+        results: media,
+      })
+      return
+    }
+
     if (url.pathname === '/api/similar') {
       const filename = normalizeQuery(url.searchParams.get('filename') || '')
       if (!filename) {
@@ -407,7 +449,13 @@ export const createSearchHandler = ({
           with_payload: true,
           with_vector: false,
         })
-        const results = similarResults({ points: points.points, filename, limit })
+        const results = hydratePointResults({
+          points: points.points,
+          store,
+          config,
+          excludedFilenames: new Set([filename]),
+          limit,
+        })
 
         sendJson(response, 200, {
           filename,
@@ -480,8 +528,10 @@ export const createSearchHandler = ({
         with_vector: false,
       })
 
-      const results = searchResults({
+      const results = hydratePointResults({
         points: points.points,
+        store,
+        config,
         excludedFilenames,
         limit,
       })

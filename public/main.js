@@ -1,4 +1,4 @@
-const mediaUrl = '/indeksi.csv'
+const mediaUrl = '/api/media'
 const searchUrl = '/api/search'
 const similarUrl = '/api/similar'
 const baseUrl = '/'
@@ -27,50 +27,6 @@ const extractType = (filename) => {
   return 'unknown'
 }
 
-const parseCSV = (str) => {
-  const arr = []
-  let quote = false
-
-  for (let row = 0, col = 0, c = 0; c < str.length; c += 1) {
-    const cc = str[c]
-    const nc = str[c + 1]
-    arr[row] = arr[row] || []
-    arr[row][col] = arr[row][col] || ''
-
-    if (cc === '"' && quote && nc === '"') {
-      arr[row][col] += cc
-      c += 1
-      continue
-    }
-
-    if (cc === '"') {
-      quote = !quote
-      continue
-    }
-
-    if (cc === ',' && !quote) {
-      col += 1
-      continue
-    }
-
-    if (cc === '\r' && nc === '\n' && !quote) {
-      row += 1
-      col = 0
-      c += 1
-      continue
-    }
-
-    if ((cc === '\n' || cc === '\r') && !quote) {
-      row += 1
-      col = 0
-      continue
-    }
-
-    arr[row][col] += cc
-  }
-  return arr
-}
-
 const readableFilename = (filename) => {
   let matches = filename.match(/(.+)\.[a-zA-Z0-9]+$/)
   if (matches === null || matches.length < 2) matches = filename.match(/(.+)$/)
@@ -93,27 +49,19 @@ const readableFilename = (filename) => {
 }
 
 const getMedia = async () => {
-  const response = await fetch(mediaUrl).then((res) => res.text())
-  const csv = parseCSV(response).reverse()
-  const media = []
+  const response = await fetch(mediaUrl)
+  const body = await response.json()
+  if (!response.ok) throw new Error(body.message || body.error || 'Media unavailable')
 
-  csv.forEach((row) => {
-    const [filename, creator, modified] = row
-    if (!filename) return
-
-    const type = extractType(filename)
-    const { name, keywords } = readableFilename(filename)
-    const url = `${baseUrl}${filename}`
-
-    media.push({
-      filename,
-      type,
-      name,
-      keywords,
-      url,
-      modified,
-      creator,
-    })
+  const media = (body.results || []).map((item) => {
+    const fallback = readableFilename(item.filename)
+    return {
+      ...item,
+      type: item.type || extractType(item.filename),
+      name: item.name || fallback.name,
+      keywords: item.keywords || fallback.keywords,
+      url: item.url || `${baseUrl}${item.filename}`,
+    }
   })
 
   media.sort((a, b) => new Date(b.modified) - new Date(a.modified))

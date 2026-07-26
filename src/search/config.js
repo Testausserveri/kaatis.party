@@ -23,7 +23,7 @@ export const getSearchConfig = (env = process.env) => {
 
   return {
     uploadDirectory,
-    indexPath: env.INDEX_PATH || path.join(uploadDirectory, 'indeksi.csv'),
+    mediaDbPath: env.MEDIA_DB_PATH || 'data/kaatis.sqlite',
     publicBaseUrl: env.SEARCH_PUBLIC_BASE_URL || '/',
     qdrantUrl: env.QDRANT_URL || 'http://localhost:6333',
     qdrantApiKey: env.QDRANT_API_KEY || undefined,

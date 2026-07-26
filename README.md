@@ -12,13 +12,13 @@ Liven up your community!
 
 - Memes sent to your meme channel are **saved to disk**. 🗃️✅
 
-- Deleting a meme's message in Discord **automatically removes** the archived file, keeping the catalog in sync — even for memes uploaded before the bot was last restarted. 🗑️♻️
+- Deleting a meme's message in Discord **automatically removes** the archived file and metadata, keeping the catalog in sync. 🗑️♻️
 
 - The names of the saved files are **intelligently deducted** from message content or left as-is. The names are also **automatically** sanitized and truncated. 🥶🤤
 
 - Archived memes can be viewed from a minimalist **Apache file listing**. How dank! 🚀🙌
 
-- Images can be indexed into a self-hosted **Qdrant** vector database and searched semantically with **Gemini Embedding 2**. The indexer reads the existing files in place and stores only vectors plus metadata; it does not copy the media library.
+- Media metadata is stored in **SQLite**. Images can be indexed into a self-hosted **Qdrant** vector database and searched semantically with **Gemini Embedding 2**. The indexer reads the existing files in place and stores only vectors plus search payload metadata; it does not copy the media library.
 
 - `/kaatis` works in any channel: it reads that channel's latest messages, searches for a fitting indexed image, and replies with its public URL so Discord renders it as an image. `!meemi` still works as a text-command fallback.
 - `/kaatis hakusana:<teksti>` searches directly with that query.
@@ -32,10 +32,10 @@ Prerequisites: Docker, modern Node runtime
 
 1. Install the dependencies of the bot: `npm install`.
 
-2. Rename `.example.env` to `.env` and fill in the fields. Upload directory (`UPLOAD_DIR`), htaccess path (`HTACCESS_PATH`) and index path (`INDEX_PATH`) are also configurable.
+2. Rename `.example.env` to `.env` and fill in the fields. Upload directory (`UPLOAD_DIR`) and SQLite metadata path (`MEDIA_DB_PATH`) are configurable.
 Note: By default, all images by bots and webhooks are ignored. However, webhooks can be allowlisted in a comma-separated list as `ALLOWED_WEBHOOK_IDS`. 
 
-   > The index (`indeksi.csv`) records the Discord message ID of each upload. This is what lets the bot delete the right file when a message is deleted, so uploads made before this file existed cannot be auto-deleted.
+   > The SQLite media database records the Discord message ID of each upload. This is what lets the bot delete the right file and search metadata when a message is deleted.
 
 3. Run the bot and the Apache web server in different Docker containers: `docker compose -f docker-compose.yml up`.
 
@@ -52,7 +52,13 @@ scope until the cost and UX are worth it.
    docker compose up -d qdrant search
    ```
 
-3. Index the current media directory from the server that has the real files.
+3. If migrating an old CSV-based install, populate SQLite first:
+
+   ```sh
+   docker compose run --rm bot npm run media:migrate
+   ```
+
+4. Index the current media directory from the server that has the real files.
    In production, run this inside Docker so the indexer uses the same modern
    Node runtime as the search service:
 
@@ -66,13 +72,14 @@ scope until the cost and UX are worth it.
    docker compose run --rm -e SEARCH_INDEX_LIMIT=25 -e SEARCH_DELETE_STALE=false search npm run search:index
    ```
 
-4. The media Apache container proxies `/api/search` to the internal search
+5. The media Apache container proxies `/api/search` and `/api/media` to the internal search
    service through `apache-vhost.conf`, so host Apache can keep forwarding all
    kaatis traffic to the media container.
 
 Useful knobs:
 
 - `PUBLIC_BASE_URL`, default: `https://kaatis.party`
+- `MEDIA_DB_PATH`, default: `data/kaatis.sqlite`
 - `DISCORD_GUILD_ID`, default: derived from `MEME_CHANNEL_ID`
 - `DISCORD_REGISTER_SLASH_COMMANDS`, default: `true`
 - `MEME_SEARCH_URL`, default: `http://search:3000/api/search`
