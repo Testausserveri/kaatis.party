@@ -1,7 +1,7 @@
 export const defaultMemeSearchCommands = ['!meemi']
 export const defaultMemeSlashCommandName = 'kaatis'
 export const legacyMemeSlashCommandNames = ['meemi']
-export const defaultMemeMessageCommandName = 'Meemi tästä'
+export const legacyMemeMessageCommandNames = ['Meemi tästä']
 export const memeSearchOptionName = 'hakusana'
 
 const normalizeWhitespace = (value) => String(value || '').replace(/\s+/g, ' ').trim()
@@ -58,14 +58,6 @@ export const memeSlashCommandDefinition = (
       description_localizations: null,
     },
   ],
-})
-
-export const memeMessageCommandDefinition = (
-  name = defaultMemeMessageCommandName,
-) => ({
-  name,
-  type: 3,
-  name_localizations: null,
 })
 
 const hasMediaResult = (result) => Boolean(result?.url || result?.filename)

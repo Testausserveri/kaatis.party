@@ -19,13 +19,12 @@ import * as utils from './utils.js'
 import {
   absoluteMediaUrl,
   buildMemeSearchQuery,
-  defaultMemeMessageCommandName,
   defaultMemeSlashCommandName,
   isMemeSlashCommand,
   isMemeSearchCommand,
+  legacyMemeMessageCommandNames,
   legacyMemeSlashCommandNames,
   mediaFilenamesFromMessages,
-  memeMessageCommandDefinition,
   memeSlashCommandDefinition,
   memeSearchOptionName,
   nonNegativeNumber,
@@ -226,6 +225,27 @@ async function deleteLegacyMemeSlashCommands({ applicationId, guildId }) {
   }
 }
 
+async function deleteLegacyMemeMessageCommands({ applicationId, guildId }) {
+  if (legacyMemeMessageCommandNames.length === 0) return
+
+  const cleanupGuildIds = guildId ? [guildId, ''] : ['']
+  for (const cleanupGuildId of cleanupGuildIds) {
+    const scopeText = cleanupGuildId ? `guildistä ${cleanupGuildId}` : 'globaalisti'
+    for (const name of legacyMemeMessageCommandNames) {
+      const removed = await deleteApplicationCommandByName({
+        applicationId,
+        guildId: cleanupGuildId,
+        name,
+        type: 3,
+      })
+
+      if (removed) {
+        console.log(`poistettu ${name} vanha viestikomento ${scopeText}`)
+      }
+    }
+  }
+}
+
 async function registerMemeCommands() {
   if (!registerSlashCommands) return
 
@@ -233,7 +253,6 @@ async function registerMemeCommands() {
   const guildId = await memeCommandGuildId()
   const commands = [
     memeSlashCommandDefinition(memeSlashCommandName),
-    memeMessageCommandDefinition(),
   ]
 
   const scopeText = guildId ? `guildiin ${guildId}` : 'globaalisti'
@@ -250,6 +269,7 @@ async function registerMemeCommands() {
   }
 
   await deleteLegacyMemeSlashCommands({ applicationId, guildId })
+  await deleteLegacyMemeMessageCommands({ applicationId, guildId })
 }
 
 async function replyTemporarily(message, text) {
@@ -494,76 +514,6 @@ async function searchMemeForChannelContext({ channel, excludedMessageId = '' }) 
   })
 }
 
-async function searchMemeForTargetMessage({ channel, targetMessage }) {
-  if (!channel?.messages?.fetch) return { status: 'no_context' }
-  if (!canReadChannelHistory(channel)) return { status: 'missing_access' }
-  if (!targetMessage) return { status: 'no_context' }
-
-  const fetchLimit = Math.min(Math.max(memeFetchLimit, memeContextLimit), 100)
-  let beforeMessages
-  try {
-    beforeMessages = await channel.messages.fetch({
-      before: targetMessage.id,
-      limit: Math.max(fetchLimit - 1, 1),
-    })
-  } catch (e) {
-    if (e.code === 50001 || e.message === 'Missing Access') {
-      return { status: 'missing_access' }
-    }
-    throw e
-  }
-
-  const fetchedMessageList = [
-    targetMessage,
-    ...Array.from(beforeMessages.values()),
-  ]
-  const contextMessages = fetchedMessageList
-    .filter((candidate) => !candidate.author?.bot)
-  const queryMessages = [...contextMessages]
-    .sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0))
-    .slice(-memeContextLimit)
-  const fallbackQuery = buildMemeSearchQuery(queryMessages, {
-    limit: memeContextLimit,
-    maxLength: memeQueryMaxLength,
-  })
-  const queryInfo = await buildSearchQueryForMessages({
-    messages: queryMessages,
-    fallbackQuery,
-  })
-  const { query } = queryInfo
-
-  if (!query) return { status: 'no_context' }
-
-  const excludedFilenames = await recentBotResultFilenames(channel)
-  return searchMemeByQuery({
-    query,
-    excludedFilenames,
-    logPayload: {
-      channelId: channel.id,
-      searchMode: 'viestikonteksti',
-      anchorMessageId: targetMessage.id,
-      fetchLimit,
-      fetchedMessageCount: fetchedMessageList.length,
-      availableContextMessageCount: contextMessages.length,
-      usedMessageCount: queryMessages.length,
-      usedMessages: [...queryMessages]
-        .sort((a, b) => (b.createdTimestamp || 0) - (a.createdTimestamp || 0))
-        .map((message) => ({
-          id: message.id,
-          authorId: message.author?.id || '',
-          author: message.author?.username || message.author?.tag || '',
-          createdAt: message.createdAt?.toISOString?.() || '',
-          content: message.content || '',
-        })),
-      querySource: queryInfo.source,
-      queryModel: queryInfo.source === 'gemini' ? memeQueryModel : '',
-      fallbackQuery,
-      generatedQueryRaw: queryInfo.rawText,
-      queryExtractionError: queryInfo.error,
-    },
-  })
-}
-
 async function handleMemeSearchResult(interaction, result) {
   if (result.status === 'no_context') {
     await editInteractionTemporarily(interaction, botMessages.memeSearchNoContext)
@@ -653,40 +603,6 @@ async function handleMemeSlashCommand(interaction) {
   }
 }
 
-async function handleMemeMessageCommand(interaction) {
-  const isMemeCommand = (
-    interaction.isMessageContextMenuCommand()
-    && interaction.commandName === defaultMemeMessageCommandName
-  )
-
-  if (!isMemeCommand) {
-    return
-  }
-
-  const channel = interaction.channel || await client.channels.fetch(interaction.channelId)
-
-  try {
-    await interaction.deferReply()
-    const result = await searchMemeForTargetMessage({
-      channel,
-      targetMessage: interaction.targetMessage,
-    })
-    await handleMemeSearchResult(interaction, result)
-  } catch (e) {
-    console.error(`Meemiviestikomento epäonnistui: ${e.message}`)
-
-    if (interaction.deferred || interaction.replied) {
-      await editInteractionTemporarily(interaction, botMessages.memeSearchError)
-      return
-    }
-
-    await interaction.reply({
-      content: botMessages.memeSearchError,
-      flags: MessageFlags.Ephemeral,
-    })
-  }
-}
-
 client.once('clientReady', async () => {
   // Notice: npm_package_version is only available if the application is launched with npm start
   client.user.setActivity(`v${process.env.npm_package_version}`)
@@ -700,7 +616,6 @@ client.once('clientReady', async () => {
 
 client.on('interactionCreate', async (interaction) => {
   await handleMemeSlashCommand(interaction)
-  await handleMemeMessageCommand(interaction)
 })
 
 client.on('messageCreate', async (message) => {

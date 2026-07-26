@@ -21,7 +21,7 @@ Liven up your community!
 - Images can be indexed into a self-hosted **Qdrant** vector database and searched semantically with **Gemini Embedding 2**. The indexer reads the existing files in place and stores only vectors plus metadata; it does not copy the media library.
 
 - `/kaatis` works in any channel: it reads that channel's latest messages, searches for a fitting indexed image, and replies with its public URL so Discord renders it as an image. `!meemi` still works as a text-command fallback.
-- `/kaatis hakusana:<teksti>` searches directly with that query. The message context command `Meemi tästä` analyzes the selected message plus the messages before it.
+- `/kaatis hakusana:<teksti>` searches directly with that query.
 
 
 ## installation
