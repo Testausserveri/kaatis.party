@@ -12,6 +12,11 @@
             <div id="logo">
                 <span class="desktop">Kaatis Party</span>
             </div>
+            <form id="search-form" role="search">
+                <input id="search-input" type="search" autocomplete="off" placeholder="Search memes">
+                <button id="search-clear" type="button" hidden>&times;</button>
+                <button type="submit">Search</button>
+            </form>
         </nav>
     </header>
     <main id="main" class="loading">
@@ -25,7 +30,10 @@
                     </div>
                     <p>Creator: <b class="creator"></b></p>
                     <p>Modified: <b class="modified"></b></p>
-                    <p><a class="url" target="_blank">Download</a></p>
+                    <p class="actions">
+                        <button class="similar" type="button">Similar</button>
+                        <a class="url" target="_blank">Download</a>
+                    </p>
                 </div>
             </div>
         </section>
