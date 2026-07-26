@@ -1,7 +1,8 @@
 {
     "env": {
         "es2021": true,
-        "node": true
+        "node": true,
+        "browser": true
     },
     "extends": [
         "airbnb-base"
@@ -14,6 +15,12 @@
         "semi": "off",
         "no-console": "off",
         "no-restricted-syntax": "off",
-        "import/extensions": "off"
+        "import/extensions": "off",
+        "import/no-unresolved": "off",
+        "import/prefer-default-export": "off",
+        "no-await-in-loop": "off",
+        "no-bitwise": "off",
+        "no-continue": "off",
+        "object-curly-newline": "off"
     }
 }
