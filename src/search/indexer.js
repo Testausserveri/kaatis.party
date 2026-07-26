@@ -6,10 +6,15 @@ import {
   hashText,
   mediaPayload,
   payloadMatches,
+  pointIdForFilename,
   readIndexedMedia,
+  readIndexedMediaFile,
+  safeMediaFilename,
+  isImageFilename,
 } from './media.js'
 import {
   createQdrantClient,
+  deletePoints,
   deleteStalePoints,
   ensureCollection,
   retrievePayloads,
@@ -53,7 +58,7 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return results
 }
 
-const buildPoint = async ({
+export const buildPoint = async ({
   ai,
   media,
   existingPayload,
@@ -71,7 +76,8 @@ const buildPoint = async ({
     return { status: 'skipped' }
   }
 
-  const embedding = await embedImageDocument({ ai, media, config })
+  const gemini = ai || createGeminiClient(config)
+  const embedding = await embedImageDocument({ ai: gemini, media, config })
 
   return {
     status: 'indexed',
@@ -133,6 +139,109 @@ const processMediaBatch = async ({
       skipped,
       failed,
     },
+  }
+}
+
+export const indexMediaFile = async ({
+  filename,
+  config = getSearchConfig(),
+  logger = console,
+  ai,
+  client,
+} = {}) => {
+  const qdrant = client || createQdrantClient(config)
+  await ensureCollection({ client: qdrant, config })
+
+  const media = await readIndexedMediaFile({ config, filename })
+  if (!media) {
+    return {
+      status: 'not_indexable',
+      filename,
+      indexed: false,
+      skipped: false,
+    }
+  }
+
+  const existingPayloads = await retrievePayloads({
+    client: qdrant,
+    collectionName: config.qdrantCollection,
+    ids: [media.id],
+    batchSize: 1,
+  })
+  const result = await buildPoint({
+    ai,
+    media,
+    existingPayload: existingPayloads.get(media.id),
+    config,
+  })
+
+  if (result.status === 'skipped') {
+    logger.log(`Tiedosto ${media.filename} on jo ajan tasalla Qdrantissa`)
+    return {
+      status: 'skipped',
+      filename: media.filename,
+      indexed: false,
+      skipped: true,
+    }
+  }
+
+  await upsertPoints({
+    client: qdrant,
+    collectionName: config.qdrantCollection,
+    points: [result.point],
+    batchSize: 1,
+  })
+  logger.log(`Indeksoitu uusi tai muuttunut tiedosto ${media.filename}`)
+
+  return {
+    status: 'indexed',
+    filename: media.filename,
+    indexed: true,
+    skipped: false,
+  }
+}
+
+export const deleteMediaFilesFromIndex = async ({
+  filenames,
+  config = getSearchConfig(),
+  logger = console,
+  client,
+} = {}) => {
+  const imageFilenames = [...new Set((Array.isArray(filenames) ? filenames : [filenames])
+    .map(safeMediaFilename)
+    .filter((filename) => filename && isImageFilename(filename)))]
+
+  if (imageFilenames.length === 0) {
+    return {
+      status: 'skipped',
+      deleted: 0,
+      filenames: [],
+    }
+  }
+
+  const qdrant = client || createQdrantClient(config)
+  const exists = await qdrant.collectionExists(config.qdrantCollection)
+  if (!exists.exists) {
+    return {
+      status: 'missing_collection',
+      deleted: 0,
+      filenames: imageFilenames,
+    }
+  }
+
+  const deleted = await deletePoints({
+    client: qdrant,
+    collectionName: config.qdrantCollection,
+    ids: imageFilenames.map(pointIdForFilename),
+    batchSize: config.qdrantBatchSize,
+  })
+
+  logger.log(`Poistettu ${deleted} tiedosto(a) Qdrant-indeksistä`)
+
+  return {
+    status: 'deleted',
+    deleted,
+    filenames: imageFilenames,
   }
 }
 

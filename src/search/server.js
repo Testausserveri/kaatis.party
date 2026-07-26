@@ -1,6 +1,7 @@
 import http from 'http'
 import { getSearchConfig } from './config.js'
 import { createGeminiClient, embedQuery } from './gemini.js'
+import { deleteMediaFilesFromIndex, indexMediaFile } from './indexer.js'
 import { pointIdForFilename } from './media.js'
 import { createQdrantClient, pointToSearchResult } from './qdrant.js'
 
@@ -33,7 +34,38 @@ const similarResults = ({ points, filename, limit }) => points
   .slice(0, limit)
   .map(pointToSearchResult)
 
-const normalizeQuery = (query) => query.trim().replace(/\s+/g, ' ')
+const normalizeQuery = (query) => String(query || '').trim().replace(/\s+/g, ' ')
+
+const filenamesFromBody = (body) => (
+  Array.isArray(body.filenames) ? body.filenames : [body.filename]
+).map(normalizeQuery).filter(Boolean)
+
+const readJsonBody = (request, { maxBytes = 16 * 1024 } = {}) => new Promise((resolve, reject) => {
+  let body = ''
+
+  request.on('data', (chunk) => {
+    body += chunk
+    if (Buffer.byteLength(body) > maxBytes) {
+      reject(new Error('body_too_large'))
+      request.destroy()
+    }
+  })
+
+  request.on('end', () => {
+    if (!body.trim()) {
+      resolve({})
+      return
+    }
+
+    try {
+      resolve(JSON.parse(body))
+    } catch {
+      reject(new Error('invalid_json'))
+    }
+  })
+
+  request.on('error', reject)
+})
 
 export const shouldUseQueryCache = (value) => {
   if (value === null) return true
@@ -242,12 +274,77 @@ export const createSearchHandler = ({
   ai,
   client = createQdrantClient(config),
   embedQueryFn = embedQuery,
+  deleteMediaFilesFromIndexFn = deleteMediaFilesFromIndex,
+  indexMediaFileFn = indexMediaFile,
 } = {}) => {
   const getQueryEmbedding = createQueryEmbeddingCache({ client, config, embedQueryFn })
   const rateLimiter = createRateLimiter({ config })
 
   return async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`)
+
+    if (url.pathname === '/api/index') {
+      if (!['DELETE', 'POST'].includes(request.method)) {
+        sendJson(response, 405, { error: 'method_not_allowed' })
+        return
+      }
+
+      if (!isInternalRequest({ request, config })) {
+        sendJson(response, 403, { error: 'forbidden' })
+        return
+      }
+
+      let body
+      try {
+        body = await readJsonBody(request)
+      } catch (e) {
+        sendJson(response, 400, { error: e.message })
+        return
+      }
+
+      if (request.method === 'DELETE') {
+        const filenames = filenamesFromBody(body)
+        if (filenames.length === 0) {
+          sendJson(response, 400, { error: 'missing_filename' })
+          return
+        }
+
+        try {
+          const result = await deleteMediaFilesFromIndexFn({
+            filenames,
+            config,
+            client,
+            logger: console,
+          })
+          sendJson(response, 200, result)
+        } catch (e) {
+          console.error(`Tiedostojen indeksointipoisto epäonnistui: ${e.message}`)
+          sendJson(response, 503, { error: 'index_delete_unavailable' })
+        }
+        return
+      }
+
+      const [filename] = filenamesFromBody(body)
+      if (!filename) {
+        sendJson(response, 400, { error: 'missing_filename' })
+        return
+      }
+
+      try {
+        const result = await indexMediaFileFn({
+          filename,
+          config,
+          ai,
+          client,
+          logger: console,
+        })
+        sendJson(response, result.status === 'not_indexable' ? 422 : 200, result)
+      } catch (e) {
+        console.error(`Tiedoston ${filename} indeksointipyyntö epäonnistui: ${e.message}`)
+        sendJson(response, 503, { error: 'index_unavailable' })
+      }
+      return
+    }
 
     if (request.method !== 'GET') {
       sendJson(response, 405, { error: 'method_not_allowed' })

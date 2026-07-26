@@ -49,6 +49,24 @@ export const upsertPoints = async ({
   }
 }
 
+export const deletePoints = async ({
+  client,
+  collectionName,
+  ids,
+  batchSize = 128,
+}) => {
+  const pointIds = ids.filter(Boolean)
+
+  for (let index = 0; index < pointIds.length; index += batchSize) {
+    await client.delete(collectionName, {
+      wait: true,
+      points: pointIds.slice(index, index + batchSize),
+    })
+  }
+
+  return pointIds.length
+}
+
 export const deleteStalePoints = async ({
   client,
   collectionName,
@@ -72,14 +90,12 @@ export const deleteStalePoints = async ({
     offset = page.next_page_offset
   } while (offset !== null && offset !== undefined)
 
-  for (let index = 0; index < staleIds.length; index += batchSize) {
-    await client.delete(collectionName, {
-      wait: true,
-      points: staleIds.slice(index, index + batchSize),
-    })
-  }
-
-  return staleIds.length
+  return deletePoints({
+    client,
+    collectionName,
+    ids: staleIds,
+    batchSize,
+  })
 }
 
 export const pointToSearchResult = (point) => {

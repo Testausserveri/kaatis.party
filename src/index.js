@@ -20,6 +20,7 @@ import {
   absoluteMediaUrl,
   buildMemeSearchQuery,
   defaultMemeSlashCommandName,
+  isMemeImageFilename,
   isMemeSlashCommand,
   isMemeSearchCommand,
   legacyMemeMessageCommandNames,
@@ -48,6 +49,7 @@ const uploadDirectory = process.env.UPLOAD_DIR || 'public/'
 const htaccessPath = process.env.HTACCESS_PATH || 'public/.htaccess'
 const indexPath = process.env.INDEX_PATH || 'public/indeksi.csv'
 const memeSearchUrl = process.env.MEME_SEARCH_URL || 'http://search:3000/api/search'
+const memeIndexUrl = process.env.MEME_INDEX_URL || 'http://search:3000/api/index'
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://kaatis.party'
 const memeContextLimit = positiveInteger(process.env.MEME_CONTEXT_LIMIT, 10)
 const memeFetchLimit = positiveInteger(process.env.MEME_FETCH_LIMIT, 12)
@@ -145,6 +147,50 @@ async function removeUploads(filenames) {
     const match = line.match(/^"([^"]*)",/)
     return match !== null && set.has(match[1])
   })
+}
+
+async function indexUploadedMeme(filename) {
+  if (!isMemeImageFilename(filename)) return
+
+  if (!searchInternalToken) {
+    console.error(`Tiedoston ${filename} automaattinen indeksointi ohitettiin: SEARCH_INTERNAL_TOKEN puuttuu`)
+    return
+  }
+
+  try {
+    const { data } = await axios.post(memeIndexUrl, { filename }, {
+      headers: { 'x-kaatis-internal-token': searchInternalToken },
+      timeout: 60000,
+    })
+    console.log(`Tiedoston ${filename} indeksointipyyntö valmis: ${data.status}`)
+  } catch (e) {
+    const status = e.response?.status ? ` HTTP ${e.response.status}` : ''
+    const error = e.response?.data?.error || e.message
+    console.error(`Tiedoston ${filename} automaattinen indeksointi epäonnistui:${status} ${error}`)
+  }
+}
+
+async function deleteIndexedMemes(filenames) {
+  const imageFilenames = filenames.filter(isMemeImageFilename)
+  if (imageFilenames.length === 0) return
+
+  if (!searchInternalToken) {
+    console.error(`Tiedostojen ${imageFilenames.join(', ')} indeksipoisto ohitettiin: SEARCH_INTERNAL_TOKEN puuttuu`)
+    return
+  }
+
+  try {
+    const { data } = await axios.delete(memeIndexUrl, {
+      headers: { 'x-kaatis-internal-token': searchInternalToken },
+      data: { filenames: imageFilenames },
+      timeout: 30000,
+    })
+    console.log(`Poistettu ${data.deleted} tiedosto(a) hakuindeksistä`)
+  } catch (e) {
+    const status = e.response?.status ? ` HTTP ${e.response.status}` : ''
+    const error = e.response?.data?.error || e.message
+    console.error(`Tiedostojen ${imageFilenames.join(', ')} indeksipoisto epäonnistui:${status} ${error}`)
+  }
 }
 
 async function memeCommandGuildId() {
@@ -691,6 +737,8 @@ client.on('messageCreate', async (message) => {
       await fsp.appendFile(indexPath,
         `"${availableFilename}","${message.author.username}","${utils.currentTimestamp()}","${message.id}"\n`)
 
+      await indexUploadedMeme(availableFilename)
+
       console.log(`Ladattu ${availableFilename}, käyttäjä ${message.author.tag}`)
     } catch (e) {
       // Roll back any partial artifacts so a failed upload leaves nothing behind:
@@ -712,6 +760,7 @@ client.on('messageDelete', async (message) => {
   if (filenames.length === 0) return
 
   await removeUploads(filenames)
+  await deleteIndexedMemes(filenames)
   console.log(`Poistettu ${filenames.length} tiedosto(a) poistetulle viestille ${message.id}`)
 })
 

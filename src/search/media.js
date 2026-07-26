@@ -26,6 +26,20 @@ export const fileExtension = (filename) => path.extname(filename).slice(1).toLow
 
 export const isImageFilename = (filename) => imageMimeByExtension.has(fileExtension(filename))
 
+export const safeMediaFilename = (filename) => {
+  const normalized = path.posix.normalize(String(filename || '').replace(/\\/g, '/'))
+  if (
+    !normalized
+    || normalized === '.'
+    || normalized.includes('/')
+    || normalized.startsWith('..')
+  ) {
+    return ''
+  }
+
+  return normalized
+}
+
 export const readableFilename = (filename) => {
   const extension = path.extname(filename)
   const stem = extension ? filename.slice(0, -extension.length) : filename
@@ -119,6 +133,61 @@ export const payloadMatches = ({
   && Number(payload.embeddingDimensions) === config.embeddingDimensions
   && payload.embeddingInputVersion === config.embeddingInputVersion
 
+const mediaFromFile = async ({ config, filename, row }) => {
+  const filePath = path.join(config.uploadDirectory, filename)
+  let stat
+  try {
+    stat = await fsp.stat(filePath)
+  } catch (e) {
+    if (e.code === 'ENOENT') return null
+    throw e
+  }
+
+  if (!stat.isFile() || stat.size === 0) return null
+
+  const { name, keywords } = readableFilename(filename)
+  const extension = fileExtension(filename)
+  return {
+    ...row,
+    filename,
+    id: pointIdForFilename(filename),
+    filePath,
+    extension,
+    mimeType: imageMimeByExtension.get(extension),
+    name,
+    keywords,
+    url: `${config.publicBaseUrl}${filename}`,
+    modified: row.modified || new Date(stat.mtimeMs).toISOString(),
+    fileSize: stat.size,
+    fileMtimeMs: Math.trunc(stat.mtimeMs),
+  }
+}
+
+export const readIndexedMediaFile = async ({ config, filename }) => {
+  const safeFilename = safeMediaFilename(filename)
+  if (!safeFilename || !isImageFilename(safeFilename)) return null
+
+  let rows = []
+  try {
+    rows = parseMediaIndex(await fsp.readFile(config.indexPath, 'utf8'))
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e
+  }
+
+  const row = [...rows].reverse().find((candidate) => candidate.filename === safeFilename) || {
+    filename: safeFilename,
+    creator: '',
+    modified: '',
+    discordMessageId: '',
+  }
+
+  return mediaFromFile({
+    config,
+    filename: safeFilename,
+    row,
+  })
+}
+
 export const readIndexedMedia = async (config) => {
   const csvText = await fsp.readFile(config.indexPath, 'utf8')
   const rows = parseMediaIndex(csvText)
@@ -139,33 +208,12 @@ export const readIndexedMedia = async (config) => {
       modified: '',
       discordMessageId: '',
     }
-    const filePath = path.join(config.uploadDirectory, entry.name)
-    let stat
-    try {
-      stat = await fsp.stat(filePath)
-    } catch (e) {
-      if (e.code === 'ENOENT') continue
-      throw e
-    }
-
-    if (!stat.isFile() || stat.size === 0) continue
-
-    const { name, keywords } = readableFilename(entry.name)
-    const extension = fileExtension(entry.name)
-    media.push({
-      ...row,
+    const item = await mediaFromFile({
+      config,
       filename: entry.name,
-      id: pointIdForFilename(entry.name),
-      filePath,
-      extension,
-      mimeType: imageMimeByExtension.get(extension),
-      name,
-      keywords,
-      url: `${config.publicBaseUrl}${entry.name}`,
-      modified: row.modified || new Date(stat.mtimeMs).toISOString(),
-      fileSize: stat.size,
-      fileMtimeMs: Math.trunc(stat.mtimeMs),
+      row,
     })
+    if (item) media.push(item)
   }
 
   return media.sort((a, b) => new Date(b.modified) - new Date(a.modified))

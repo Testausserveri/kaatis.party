@@ -159,6 +159,8 @@ export const absoluteMediaUrl = ({ publicBaseUrl, mediaUrl }) => {
 
 const imageFilenamePattern = /\.(avif|gif|jpe?g|png|webp)$/i
 
+export const isMemeImageFilename = (filename) => imageFilenamePattern.test(String(filename || ''))
+
 export const mediaFilenameFromUrl = ({ publicBaseUrl, value }) => {
   try {
     const base = new URL(publicBaseUrl)

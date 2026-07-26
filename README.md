@@ -22,6 +22,8 @@ Liven up your community!
 
 - `/kaatis` works in any channel: it reads that channel's latest messages, searches for a fitting indexed image, and replies with its public URL so Discord renders it as an image. `!meemi` still works as a text-command fallback.
 - `/kaatis hakusana:<teksti>` searches directly with that query.
+- New image uploads are indexed immediately through the internal search service.
+- Deleting an uploaded Discord message also removes the image from the search index.
 
 
 ## installation
@@ -74,6 +76,7 @@ Useful knobs:
 - `DISCORD_GUILD_ID`, default: derived from `MEME_CHANNEL_ID`
 - `DISCORD_REGISTER_SLASH_COMMANDS`, default: `true`
 - `MEME_SEARCH_URL`, default: `http://search:3000/api/search`
+- `MEME_INDEX_URL`, default: `http://search:3000/api/index`
 - `MEME_CONTEXT_LIMIT`, default: `10`
 - `MEME_FETCH_LIMIT`, default: `12`
 - `MEME_QUERY_MAX_LENGTH`, default: `480`
@@ -104,5 +107,6 @@ Useful knobs:
 - `SEARCH_DELETE_STALE`, default: `true`
 
 The Discord meme command sends `cache=0` with `SEARCH_INTERNAL_TOKEN`, because
-each query contains live channel context. Public searches cannot bypass the
-query cache and are rate-limited by the search service.
+each query contains live channel context. New image uploads use the same token
+to request immediate indexing from the internal search service. Public searches
+cannot bypass the query cache and are rate-limited by the search service.
