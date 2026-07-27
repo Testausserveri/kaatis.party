@@ -34,13 +34,62 @@ const currentLocation = (): BrowserLocation => ({
 
 const RouterContext = createContext<RouterValue | null>(null)
 
+const scrollStateKey = '__kaatisScrollY'
+let scrollRestoreGeneration = 0
+
+const stateRecord = (state: unknown): Record<string, unknown> => (
+  state && typeof state === 'object' && !Array.isArray(state)
+    ? state as Record<string, unknown>
+    : {}
+)
+
+const stateWithScroll = (state: unknown, scrollY: number) => ({
+  ...stateRecord(state),
+  [scrollStateKey]: scrollY,
+})
+
+const savedScroll = (state: unknown) => {
+  const value = Number(stateRecord(state)[scrollStateKey])
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+const saveCurrentScroll = () => {
+  window.history.replaceState(
+    stateWithScroll(window.history.state, window.scrollY),
+    '',
+  )
+}
+
+const restoreScroll = (target: number) => {
+  const generation = ++scrollRestoreGeneration
+  let attempts = 0
+  const apply = () => {
+    if (generation !== scrollRestoreGeneration) return
+    window.scrollTo({ top: target })
+    attempts += 1
+    if (attempts < 12 && Math.abs(window.scrollY - target) > 1) {
+      window.requestAnimationFrame(apply)
+    }
+  }
+  window.requestAnimationFrame(() => window.requestAnimationFrame(apply))
+}
+
 export const Router = ({ children }: { children: ReactNode }) => {
   const [location, setLocation] = useState(currentLocation)
 
   useEffect(() => {
-    const onPopState = () => setLocation(currentLocation())
+    const previousScrollRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    const onPopState = () => {
+      const next = currentLocation()
+      setLocation(next)
+      restoreScroll(savedScroll(next.state))
+    }
     window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration
+      window.removeEventListener('popstate', onPopState)
+    }
   }, [])
 
   const navigate = useCallback((
@@ -48,13 +97,20 @@ export const Router = ({ children }: { children: ReactNode }) => {
     options: NavigateOptions = {},
   ) => {
     if (typeof to === 'number') {
+      saveCurrentScroll()
       window.history.go(to)
       return
     }
+    scrollRestoreGeneration += 1
     if (options.replace) {
-      window.history.replaceState(options.state ?? null, '', to)
+      window.history.replaceState(
+        stateWithScroll(options.state ?? window.history.state, 0),
+        '',
+        to,
+      )
     } else {
-      window.history.pushState(options.state ?? null, '', to)
+      saveCurrentScroll()
+      window.history.pushState(stateWithScroll(options.state, 0), '', to)
     }
     setLocation(currentLocation())
     window.scrollTo({ top: 0 })
