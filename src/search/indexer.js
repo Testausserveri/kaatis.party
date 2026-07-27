@@ -1,5 +1,9 @@
 import { getSearchConfig } from './config.js'
-import { createGeminiClient, embedImageDocument } from './gemini.js'
+import {
+  createGeminiClient,
+  embedImageDocument,
+  embedVideoDocument,
+} from './gemini.js'
 import {
   buildDocumentText,
   checksumFile,
@@ -10,11 +14,11 @@ import {
   readIndexedMedia,
   readIndexedMediaFile,
   safeMediaFilename,
-  isImageFilename,
+  isIndexableFilename,
 } from './media.js'
 import {
   createQdrantClient,
-  deletePoints,
+  deletePointsForFilenames,
   deleteStalePoints,
   ensureCollection,
   retrievePayloads,
@@ -58,6 +62,90 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return results
 }
 
+export const averageNormalizedVectors = (vectors) => {
+  if (!Array.isArray(vectors) || vectors.length === 0) {
+    throw new Error('Yhtään vektoria ei annettu keskiarvoa varten')
+  }
+  const dimensions = vectors[0].length
+  const sum = new Array(dimensions).fill(0)
+  vectors.forEach((vector) => {
+    if (!Array.isArray(vector) || vector.length !== dimensions) {
+      throw new Error('Komponenttivektorien dimensiot eivät täsmää')
+    }
+    const componentNorm = Math.sqrt(vector
+      .reduce((total, value) => total + (value * value), 0))
+    if (componentNorm === 0) throw new Error('Tyhjää komponenttivektoria ei voi normalisoida')
+    vector.forEach((value, index) => {
+      sum[index] += value / componentNorm
+    })
+  })
+  const totalNorm = Math.sqrt(sum.reduce((total, value) => total + (value * value), 0))
+  return sum.map((value) => value / totalNorm)
+}
+
+export const videoComponentId = ({ filename, kind, segmentIndex }) => (
+  pointIdForFilename(`video:${filename}:${kind}:${segmentIndex}`)
+)
+
+export const videoPointsFromComponents = ({
+  media,
+  checksum,
+  sourceTextHash,
+  components,
+  durationSeconds,
+  indexedDurationSeconds,
+  truncated,
+  config,
+}) => {
+  const commonExtra = {
+    durationSeconds,
+    indexedDurationSeconds,
+    embeddingTruncated: truncated,
+  }
+  const root = {
+    id: media.id,
+    vector: averageNormalizedVectors(components.map((component) => component.vector)),
+    payload: mediaPayload({
+      media,
+      checksum,
+      sourceTextHash,
+      config,
+      convertedForEmbedding: true,
+      embeddingInputVersion: config.videoEmbeddingInputVersion,
+      extra: {
+        ...commonExtra,
+        pointKind: 'root',
+        modality: 'mixed',
+      },
+    }),
+  }
+  const componentPoints = components.map((component) => ({
+    id: videoComponentId({
+      filename: media.filename,
+      kind: component.kind,
+      segmentIndex: component.segmentIndex,
+    }),
+    vector: component.vector,
+    payload: mediaPayload({
+      media,
+      checksum,
+      sourceTextHash,
+      config,
+      convertedForEmbedding: true,
+      embeddingInputVersion: config.videoEmbeddingInputVersion,
+      extra: {
+        ...commonExtra,
+        pointKind: 'component',
+        modality: component.kind,
+        segmentIndex: component.segmentIndex,
+        startSeconds: component.startSeconds,
+        endSeconds: component.endSeconds,
+      },
+    }),
+  }))
+  return [root, ...componentPoints]
+}
+
 export const buildPoint = async ({
   ai,
   media,
@@ -67,16 +155,37 @@ export const buildPoint = async ({
   const checksum = await checksumFile(media.filePath)
   const sourceTextHash = hashText(buildDocumentText(media))
 
+  const embeddingInputVersion = media.mediaType === 'video'
+    ? config.videoEmbeddingInputVersion
+    : config.embeddingInputVersion
   if (payloadMatches({
     payload: existingPayload,
     checksum,
     sourceTextHash,
     config,
+    embeddingInputVersion,
   })) {
     return { status: 'skipped' }
   }
 
   const gemini = ai || createGeminiClient(config)
+  if (media.mediaType === 'video') {
+    const embedding = await embedVideoDocument({ ai: gemini, media, config })
+    return {
+      status: 'indexed',
+      points: videoPointsFromComponents({
+        media,
+        checksum,
+        sourceTextHash: embedding.sourceTextHash,
+        components: embedding.components,
+        durationSeconds: embedding.durationSeconds,
+        indexedDurationSeconds: embedding.indexedDurationSeconds,
+        truncated: embedding.truncated,
+        config,
+      }),
+    }
+  }
+
   const embedding = await embedImageDocument({ ai: gemini, media, config })
 
   return {
@@ -132,7 +241,10 @@ const processMediaBatch = async ({
   return {
     points: results
       .filter((result) => result.status === 'indexed')
-      .map((result) => result.point),
+      .flatMap((result) => result.points || [result.point]),
+    indexedFilenames: results
+      .map((result, index) => (result.status === 'indexed' ? mediaBatch[index].filename : ''))
+      .filter(Boolean),
     state: {
       ...state,
       processed,
@@ -188,9 +300,18 @@ export const indexMediaFile = async ({
   await upsertPoints({
     client: qdrant,
     collectionName: config.qdrantCollection,
-    points: [result.point],
-    batchSize: 1,
+    points: result.points || [result.point],
+    batchSize: config.qdrantBatchSize,
   })
+  if (media.mediaType === 'video') {
+    await deletePointsForFilenames({
+      client: qdrant,
+      collectionName: config.qdrantCollection,
+      filenames: [media.filename],
+      exceptIds: new Set(result.points.map((point) => String(point.id))),
+      batchSize: config.qdrantBatchSize,
+    })
+  }
   logger.log(`Indeksoitu uusi tai muuttunut tiedosto ${media.filename}`)
 
   return {
@@ -207,11 +328,11 @@ export const deleteMediaFilesFromIndex = async ({
   logger = console,
   client,
 } = {}) => {
-  const imageFilenames = [...new Set((Array.isArray(filenames) ? filenames : [filenames])
+  const mediaFilenames = [...new Set((Array.isArray(filenames) ? filenames : [filenames])
     .map(safeMediaFilename)
-    .filter((filename) => filename && isImageFilename(filename)))]
+    .filter((filename) => filename && isIndexableFilename(filename)))]
 
-  if (imageFilenames.length === 0) {
+  if (mediaFilenames.length === 0) {
     return {
       status: 'skipped',
       deleted: 0,
@@ -225,14 +346,14 @@ export const deleteMediaFilesFromIndex = async ({
     return {
       status: 'missing_collection',
       deleted: 0,
-      filenames: imageFilenames,
+      filenames: mediaFilenames,
     }
   }
 
-  const deleted = await deletePoints({
+  const deleted = await deletePointsForFilenames({
     client: qdrant,
     collectionName: config.qdrantCollection,
-    ids: imageFilenames.map(pointIdForFilename),
+    filenames: mediaFilenames,
     batchSize: config.qdrantBatchSize,
   })
 
@@ -241,7 +362,7 @@ export const deleteMediaFilesFromIndex = async ({
   return {
     status: 'deleted',
     deleted,
-    filenames: imageFilenames,
+    filenames: mediaFilenames,
   }
 }
 
@@ -256,10 +377,12 @@ export const runIndexer = async ({
   await ensureCollection({ client, config })
 
   const allMedia = await readIndexedMedia(config)
-  const media = filterMedia({ media: allMedia, config })
-  const currentIds = new Set(allMedia.map((item) => item.id))
+  const selectedMedia = allMedia
+    .filter((item) => config.indexMediaTypes.includes(item.mediaType))
+  const media = filterMedia({ media: selectedMedia, config })
+  const currentFilenames = new Set(allMedia.map((item) => item.filename))
 
-  logger.log(`Löytyi ${allMedia.length} indeksoitavaa kuva(a); käsitellään ${media.length}`)
+  logger.log(`Löytyi ${allMedia.length} indeksoitavaa mediaa; valituissa tyypeissä ${selectedMedia.length}; käsitellään ${media.length}`)
   if (config.indexMatch) logger.log(`Indeksointisuodatin: ${config.indexMatch}`)
 
   const state = {
@@ -299,6 +422,13 @@ export const runIndexer = async ({
       })
       state.indexed += batchResult.points.length
       logger.log(`Tallennettu ${batchResult.points.length} muuttunutta pistettä; tällä ajolla indeksoitu yhteensä ${state.indexed}`)
+      await deletePointsForFilenames({
+        client,
+        collectionName: config.qdrantCollection,
+        filenames: batchResult.indexedFilenames,
+        exceptIds: new Set(batchResult.points.map((point) => String(point.id))),
+        batchSize: config.qdrantBatchSize,
+      })
     }
   }
 
@@ -307,7 +437,7 @@ export const runIndexer = async ({
     deleted = await deleteStalePoints({
       client,
       collectionName: config.qdrantCollection,
-      currentIds,
+      currentFilenames,
     })
     if (deleted > 0) logger.log(`Poistettu ${deleted} vanhentunutta pistettä`)
   }

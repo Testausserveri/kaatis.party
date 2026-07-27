@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   bot:
-    image: node:lts
+    image: node:24
     user: "node"
     working_dir: /home/node/app
     volumes:
@@ -30,7 +30,10 @@ services:
     expose:
       - "6333"
   search:
-    image: node:lts
+    build:
+      context: .
+      dockerfile: Dockerfile.search
+    image: kaatis-search:local
     restart: always
     user: "node"
     working_dir: /home/node/app

@@ -2,8 +2,14 @@ import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
-import { parse } from 'csv-parse/sync'
 import sharp from 'sharp'
+import {
+  createMediaStore,
+  fileExtension,
+  mediaToApiItem,
+  mediaTypeForFilename,
+  readableFilename,
+} from '../mediaStore.js'
 
 export const imageMimeByExtension = new Map([
   ['jpg', 'image/jpeg'],
@@ -22,9 +28,12 @@ export const imageMimeByExtension = new Map([
 
 const geminiImageMimes = new Set(['image/jpeg', 'image/png'])
 
-export const fileExtension = (filename) => path.extname(filename).slice(1).toLowerCase()
+export { fileExtension, readableFilename }
 
-export const isImageFilename = (filename) => imageMimeByExtension.has(fileExtension(filename))
+export const isImageFilename = (filename) => mediaTypeForFilename(filename) === 'image'
+export const isVideoFilename = (filename) => mediaTypeForFilename(filename) === 'video'
+export const isIndexableFilename = (filename) => ['image', 'video']
+  .includes(mediaTypeForFilename(filename))
 
 export const safeMediaFilename = (filename) => {
   const normalized = path.posix.normalize(String(filename || '').replace(/\\/g, '/'))
@@ -39,31 +48,6 @@ export const safeMediaFilename = (filename) => {
 
   return normalized
 }
-
-export const readableFilename = (filename) => {
-  const extension = path.extname(filename)
-  const stem = extension ? filename.slice(0, -extension.length) : filename
-  const keywords = stem.match(/([a-zA-Z0-9]+)/g) || []
-  const name = keywords.length > 0 ? keywords.join(' ') : stem
-
-  return {
-    name,
-    keywords: keywords
-      .map((keyword) => keyword.toLowerCase())
-      .filter((keyword, index) => keyword.length > 1 && keywords.indexOf(keyword) === index),
-  }
-}
-
-export const parseMediaIndex = (csvText) => parse(csvText, {
-  relax_column_count: true,
-  relax_quotes: true,
-  skip_empty_lines: true,
-}).map((row) => ({
-  filename: row[0] || '',
-  creator: row[1] || '',
-  modified: row[2] || '',
-  discordMessageId: row[3] || '',
-})).filter((row) => row.filename)
 
 export const pointIdForFilename = (filename) => {
   const bytes = Buffer.from(crypto.createHash('sha256').update(filename).digest('hex').slice(0, 32), 'hex')
@@ -101,6 +85,8 @@ export const mediaPayload = ({
   sourceTextHash,
   config,
   convertedForEmbedding,
+  embeddingInputVersion = config.embeddingInputVersion,
+  extra = {},
 }) => ({
   filename: media.filename,
   url: media.url,
@@ -108,17 +94,18 @@ export const mediaPayload = ({
   creator: media.creator,
   modified: media.modified,
   discordMessageId: media.discordMessageId,
-  mediaType: 'image',
+  mediaType: media.mediaType,
   extension: media.extension,
   checksum,
   sourceTextHash,
   embeddingModel: config.embeddingModel,
   embeddingDimensions: config.embeddingDimensions,
-  embeddingInputVersion: config.embeddingInputVersion,
+  embeddingInputVersion,
   fileSize: media.fileSize,
   fileMtimeMs: media.fileMtimeMs,
   convertedForEmbedding,
   indexedAt: new Date().toISOString(),
+  ...extra,
 })
 
 export const payloadMatches = ({
@@ -126,12 +113,13 @@ export const payloadMatches = ({
   checksum,
   sourceTextHash,
   config,
+  embeddingInputVersion = config.embeddingInputVersion,
 }) => payload
   && payload.checksum === checksum
   && payload.sourceTextHash === sourceTextHash
   && payload.embeddingModel === config.embeddingModel
   && Number(payload.embeddingDimensions) === config.embeddingDimensions
-  && payload.embeddingInputVersion === config.embeddingInputVersion
+  && payload.embeddingInputVersion === embeddingInputVersion
 
 const mediaFromFile = async ({ config, filename, row }) => {
   const filePath = path.join(config.uploadDirectory, filename)
@@ -145,75 +133,64 @@ const mediaFromFile = async ({ config, filename, row }) => {
 
   if (!stat.isFile() || stat.size === 0) return null
 
-  const { name, keywords } = readableFilename(filename)
   const extension = fileExtension(filename)
+  const apiItem = mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl })
   return {
-    ...row,
+    ...apiItem,
     filename,
     id: pointIdForFilename(filename),
     filePath,
     extension,
     mimeType: imageMimeByExtension.get(extension),
-    name,
-    keywords,
-    url: `${config.publicBaseUrl}${filename}`,
+    mediaType: row.media_type,
+    name: apiItem.name,
+    keywords: apiItem.keywords,
+    creator: row.creator || '',
     modified: row.modified || new Date(stat.mtimeMs).toISOString(),
+    discordMessageId: row.discord_message_id || '',
     fileSize: stat.size,
     fileMtimeMs: Math.trunc(stat.mtimeMs),
   }
 }
 
-export const readIndexedMediaFile = async ({ config, filename }) => {
+export const readIndexedMediaFile = async ({ config, filename, store }) => {
   const safeFilename = safeMediaFilename(filename)
-  if (!safeFilename || !isImageFilename(safeFilename)) return null
+  if (!safeFilename || !isIndexableFilename(safeFilename)) return null
 
-  let rows = []
+  const mediaStore = store || createMediaStore(config.mediaDbPath)
+  const shouldClose = !store
+
   try {
-    rows = parseMediaIndex(await fsp.readFile(config.indexPath, 'utf8'))
-  } catch (e) {
-    if (e.code !== 'ENOENT') throw e
-  }
+    const row = mediaStore.mediaByFilename(safeFilename)
+    if (!row) return null
 
-  const row = [...rows].reverse().find((candidate) => candidate.filename === safeFilename) || {
-    filename: safeFilename,
-    creator: '',
-    modified: '',
-    discordMessageId: '',
-  }
-
-  return mediaFromFile({
-    config,
-    filename: safeFilename,
-    row,
-  })
-}
-
-export const readIndexedMedia = async (config) => {
-  const csvText = await fsp.readFile(config.indexPath, 'utf8')
-  const rows = parseMediaIndex(csvText)
-  const metadataByFilename = new Map()
-
-  rows.forEach((row) => {
-    if (isImageFilename(row.filename)) metadataByFilename.set(row.filename, row)
-  })
-
-  const media = []
-  const entries = await fsp.readdir(config.uploadDirectory, { withFileTypes: true })
-  for (const entry of entries) {
-    if (!entry.isFile() || !isImageFilename(entry.name)) continue
-
-    const row = metadataByFilename.get(entry.name) || {
-      filename: entry.name,
-      creator: '',
-      modified: '',
-      discordMessageId: '',
-    }
-    const item = await mediaFromFile({
+    return mediaFromFile({
       config,
-      filename: entry.name,
+      filename: safeFilename,
       row,
     })
-    if (item) media.push(item)
+  } finally {
+    if (shouldClose) mediaStore.close()
+  }
+}
+
+export const readIndexedMedia = async (config, { store } = {}) => {
+  const mediaStore = store || createMediaStore(config.mediaDbPath)
+  const shouldClose = !store
+  const rows = mediaStore.listMedia().filter((row) => ['image', 'video'].includes(row.media_type))
+
+  const media = []
+  try {
+    for (const row of rows) {
+      const item = await mediaFromFile({
+        config,
+        filename: row.filename,
+        row,
+      })
+      if (item) media.push(item)
+    }
+  } finally {
+    if (shouldClose) mediaStore.close()
   }
 
   return media.sort((a, b) => new Date(b.modified) - new Date(a.modified))

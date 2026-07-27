@@ -3,7 +3,17 @@ import { getSearchConfig } from './config.js'
 import { createGeminiClient, embedQuery } from './gemini.js'
 import { deleteMediaFilesFromIndex, indexMediaFile } from './indexer.js'
 import { pointIdForFilename } from './media.js'
-import { createQdrantClient, pointToSearchResult } from './qdrant.js'
+import {
+  createQdrantClient,
+  ensureCollection,
+  mergeRankedMediaPoints,
+  queryBalancedMediaPoints,
+} from './qdrant.js'
+import {
+  createMediaStore,
+  mediaToApiItem,
+  mediaTypeForFilename,
+} from '../mediaStore.js'
 
 const sendJson = (response, statusCode, body) => {
   response.writeHead(statusCode, {
@@ -24,15 +34,45 @@ export const parseExcludedFilenames = (value) => new Set(String(value || '')
   .map((filename) => filename.trim())
   .filter(Boolean))
 
-const searchResults = ({ points, excludedFilenames, limit }) => points
-  .filter((point) => !excludedFilenames.has(point.payload?.filename))
-  .slice(0, limit)
-  .map(pointToSearchResult)
+const pointFilename = (point) => point.payload?.filename || ''
 
-const similarResults = ({ points, filename, limit }) => points
-  .filter((point) => point.payload?.filename !== filename)
-  .slice(0, limit)
-  .map(pointToSearchResult)
+const hydratePointResults = ({
+  points,
+  store,
+  config,
+  excludedFilenames = new Set(),
+  limit,
+}) => {
+  const filenames = points
+    .map(pointFilename)
+    .filter((filename) => filename && !excludedFilenames.has(filename))
+  const mediaByFilename = store.mediaByFilenames(filenames)
+  const results = []
+
+  for (const point of points) {
+    const filename = pointFilename(point)
+    if (!filename || excludedFilenames.has(filename)) continue
+
+    const row = mediaByFilename.get(filename)
+    if (!row) continue
+
+    results.push({
+      ...mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl }),
+      score: point.score,
+      similarityScore: point.similarityScore ?? point.score,
+      matchedModality: point.payload?.modality || 'image',
+      matchStartSeconds: point.payload?.startSeconds,
+      matchEndSeconds: point.payload?.endSeconds,
+      embeddingTruncated: Boolean(point.payload?.embeddingTruncated),
+    })
+  }
+
+  return mergeRankedMediaPoints({
+    imagePoints: results.filter((result) => result.type === 'image'),
+    videoPoints: results.filter((result) => result.type === 'video'),
+    limit,
+  })
+}
 
 const normalizeQuery = (query) => String(query || '').trim().replace(/\s+/g, ' ')
 
@@ -276,9 +316,11 @@ export const createSearchHandler = ({
   embedQueryFn = embedQuery,
   deleteMediaFilesFromIndexFn = deleteMediaFilesFromIndex,
   indexMediaFileFn = indexMediaFile,
+  store = createMediaStore(config.mediaDbPath),
 } = {}) => {
   const getQueryEmbedding = createQueryEmbeddingCache({ client, config, embedQueryFn })
   const rateLimiter = createRateLimiter({ config })
+  let videoIndexQueue = Promise.resolve()
 
   return async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`)
@@ -330,6 +372,22 @@ export const createSearchHandler = ({
         return
       }
 
+      if (mediaTypeForFilename(filename) === 'video') {
+        videoIndexQueue = videoIndexQueue
+          .then(() => indexMediaFileFn({
+            filename,
+            config,
+            ai,
+            client,
+            logger: console,
+          }))
+          .catch((e) => {
+            console.error(`Videon ${filename} taustaindeksointi epäonnistui: ${e.message}`)
+          })
+        sendJson(response, 202, { status: 'queued', filename })
+        return
+      }
+
       try {
         const result = await indexMediaFileFn({
           filename,
@@ -378,6 +436,23 @@ export const createSearchHandler = ({
       return
     }
 
+    if (url.pathname === '/api/media') {
+      const limit = url.searchParams.has('limit')
+        ? parseLimit({ value: url.searchParams.get('limit'), config })
+        : Number.POSITIVE_INFINITY
+      const offset = Math.max(0, Math.trunc(Number(url.searchParams.get('offset') || 0)) || 0)
+      const media = store.listMedia()
+        .slice(offset, offset + limit)
+        .map((row) => mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl }))
+
+      sendJson(response, 200, {
+        count: media.length,
+        offset,
+        results: media,
+      })
+      return
+    }
+
     if (url.pathname === '/api/similar') {
       const filename = normalizeQuery(url.searchParams.get('filename') || '')
       if (!filename) {
@@ -401,13 +476,23 @@ export const createSearchHandler = ({
           return
         }
 
-        const points = await client.query(config.qdrantCollection, {
-          query: sourcePoint.vector,
-          limit: limit + 1,
-          with_payload: true,
-          with_vector: false,
+        const points = await queryBalancedMediaPoints({
+          client,
+          collectionName: config.qdrantCollection,
+          vector: sourcePoint.vector,
+          limit: limit * 2,
+          scoreThreshold: config.minSearchScore > 0 ? config.minSearchScore : undefined,
+          excludedFilenames: new Set([filename]),
+          videoAudioScoreThreshold: config.videoAudioMinSearchScore,
+          videoStoryboardScoreThreshold: config.videoStoryboardMinSearchScore,
         })
-        const results = similarResults({ points: points.points, filename, limit })
+        const results = hydratePointResults({
+          points,
+          store,
+          config,
+          excludedFilenames: new Set([filename]),
+          limit,
+        })
 
         sendJson(response, 200, {
           filename,
@@ -461,9 +546,6 @@ export const createSearchHandler = ({
 
     const limit = parseLimit({ value: url.searchParams.get('limit'), config })
     const excludedFilenames = parseExcludedFilenames(url.searchParams.get('exclude'))
-    const vectorLimit = excludedFilenames.size > 0
-      ? Math.min(config.maxSearchLimit, limit + excludedFilenames.size + 10)
-      : limit
     const useQueryCache = (
       shouldUseQueryCache(url.searchParams.get('cache'))
       || !internalRequest
@@ -472,16 +554,21 @@ export const createSearchHandler = ({
     try {
       const gemini = ai || createGeminiClient(config)
       const queryEmbedding = await getQueryEmbedding({ ai: gemini, query, useCache: useQueryCache })
-      const points = await client.query(config.qdrantCollection, {
-        query: queryEmbedding.vector,
-        limit: vectorLimit,
-        score_threshold: config.minSearchScore > 0 ? config.minSearchScore : undefined,
-        with_payload: true,
-        with_vector: false,
+      const points = await queryBalancedMediaPoints({
+        client,
+        collectionName: config.qdrantCollection,
+        vector: queryEmbedding.vector,
+        limit: limit * 2,
+        scoreThreshold: config.minSearchScore > 0 ? config.minSearchScore : undefined,
+        excludedFilenames,
+        videoAudioScoreThreshold: config.videoAudioMinSearchScore,
+        videoStoryboardScoreThreshold: config.videoStoryboardMinSearchScore,
       })
 
-      const results = searchResults({
-        points: points.points,
+      const results = hydratePointResults({
+        points,
+        store,
+        config,
         excludedFilenames,
         limit,
       })
@@ -501,10 +588,19 @@ export const createSearchHandler = ({
 
 export const createSearchServer = (options = {}) => http.createServer(createSearchHandler(options))
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const startSearchServer = async () => {
   const config = getSearchConfig()
-  const server = createSearchServer({ config })
+  const client = createQdrantClient(config)
+  await ensureCollection({ client, config })
+  const server = createSearchServer({ config, client })
   server.listen(config.searchPort, '0.0.0.0', () => {
     console.log(`Search API listening on ${config.searchPort}`)
+  })
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startSearchServer().catch((error) => {
+    console.error(`Hakupalvelun käynnistys epäonnistui: ${error.message}`)
+    process.exitCode = 1
   })
 }

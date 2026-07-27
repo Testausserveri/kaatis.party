@@ -21,8 +21,10 @@
   "scripts": {
     "test": "node --test",
     "start": "node src/index.js",
+    "media:migrate": "node src/migrateMediaStore.js",
     "search:start": "node src/search/server.js",
-    "search:index": "node src/search/indexer.js"
+    "search:index": "node src/search/indexer.js",
+    "search:index:video-batch": "node src/search/batchIndexer.js"
   },
   "keywords": [
     "discord",
