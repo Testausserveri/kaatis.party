@@ -21,10 +21,13 @@ const GalleryPage = () => {
       const parameters = new URLSearchParams()
       if (query.trim()) parameters.set('q', query.trim())
       const search = parameters.toString()
-      navigate(search ? `/?${search}` : '/', { replace: true })
+      const target = search ? `/?${search}` : '/'
+      if (`${location.pathname}${location.search}` !== target) {
+        navigate(target, { replace: true })
+      }
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [navigate, query])
+  }, [location.pathname, location.search, navigate, query])
 
   return (
     <>
