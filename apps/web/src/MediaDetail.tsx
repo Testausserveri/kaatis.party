@@ -125,9 +125,6 @@ export const MediaDetail = ({ filename }: { filename: string }) => {
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
   }
-  const matched = 'matchedModality' in item
-    ? item.matchedModality
-    : undefined
   const goBack = () => {
     if ((location.state as { from?: string } | null)?.from) navigate(-1)
     else navigate('/')
@@ -178,8 +175,6 @@ export const MediaDetail = ({ filename }: { filename: string }) => {
         <p>
           {[item.creator, formatDate(item.modified)].filter(Boolean).join(' · ')}
         </p>
-        {matched === 'audio' && <span>Osuma äänestä</span>}
-        {matched === 'storyboard' && <span>Osuma kuvasta</span>}
       </section>
 
       {similar.length > 0 && (
