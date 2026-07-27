@@ -290,6 +290,33 @@ export const queryBalancedMediaPoints = async ({
   videoAudioScoreThreshold = 0.6,
   videoStoryboardScoreThreshold = 0.45,
 }) => {
+  const { imagePoints, videoPoints } = await querySemanticMediaLists({
+    client,
+    collectionName,
+    vector,
+    limit,
+    scoreThreshold,
+    excludedFilenames,
+    videoAudioScoreThreshold,
+    videoStoryboardScoreThreshold,
+  })
+  return mergeRankedMediaPoints({
+    imagePoints,
+    videoPoints,
+    limit,
+  })
+}
+
+export const querySemanticMediaLists = async ({
+  client,
+  collectionName,
+  vector,
+  limit,
+  scoreThreshold,
+  excludedFilenames = new Set(),
+  videoAudioScoreThreshold = 0.6,
+  videoStoryboardScoreThreshold = 0.45,
+}) => {
   const [imagePoints, audioPoints, storyboardPoints] = await Promise.all([
     queryGroupedPoints({
       client,
@@ -337,12 +364,11 @@ export const queryBalancedMediaPoints = async ({
     storyboardThreshold: videoStoryboardScoreThreshold,
     limit,
   })
-  const rankedPoints = mergeRankedMediaPoints({
+
+  return {
     imagePoints,
     videoPoints,
-    limit,
-  })
-  return rankedPoints
+  }
 }
 
 export const pointToSearchResult = (point) => {

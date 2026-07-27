@@ -1,10 +1,6 @@
 node_modules
 data
+apps/web/dist
 public/*
-!public/.htaccess
-!public/icons/
-!public/index.html
-!public/main.js
-!public/style.css
 .env
 docker-compose.override.yml

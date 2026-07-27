@@ -1,5 +1,6 @@
 import fsp from 'fs/promises'
 import path from 'path'
+import { createMediaStore } from '../mediaStore.js'
 import { getSearchConfig } from './config.js'
 import {
   audioEmbeddingContent,
@@ -33,22 +34,25 @@ const terminalStates = new Set([
   'JOB_STATE_EXPIRED',
 ])
 
-const emptyState = () => ({ version: 1, jobs: [] })
-
-const readState = async (statePath) => {
+const readState = async (config) => {
+  const store = createMediaStore(config.mediaDbPath)
   try {
-    return JSON.parse(await fsp.readFile(statePath, 'utf8'))
-  } catch (error) {
-    if (error.code === 'ENOENT') return emptyState()
-    throw error
+    return {
+      version: 2,
+      jobs: store.listGeminiBatches(),
+    }
+  } finally {
+    store.close()
   }
 }
 
-const writeState = async (statePath, state) => {
-  await fsp.mkdir(path.dirname(statePath), { recursive: true })
-  const temporaryPath = `${statePath}.tmp`
-  await fsp.writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`)
-  await fsp.rename(temporaryPath, statePath)
+const writeState = async (config, state) => {
+  const store = createMediaStore(config.mediaDbPath)
+  try {
+    state.jobs.forEach((job) => store.importGeminiBatch(job))
+  } finally {
+    store.close()
+  }
 }
 
 const requestKey = ({ filename, kind, segmentIndex }) => (
@@ -133,7 +137,6 @@ const submitJob = async ({
   ai,
   config,
   state,
-  statePath,
   items,
   lines,
   logger,
@@ -169,7 +172,7 @@ const submitJob = async ({
       imported: false,
       items,
     })
-    await writeState(statePath, state)
+    await writeState(config, state)
     logger.log(`Lähetetty Batch-ajo ${batch.name}: ${items.length} videota`)
   } finally {
     await fsp.rm(jsonlPath, { force: true })
@@ -183,8 +186,7 @@ export const submitVideoBatches = async ({
   client = createQdrantClient(config),
 } = {}) => {
   await ensureCollection({ client, config })
-  const statePath = config.videoBatchStatePath
-  const state = await readState(statePath)
+  const state = await readState(config)
   const activeFilenames = new Set(state.jobs
     .filter((job) => !job.imported && (
       !terminalStates.has(job.state) || job.state === 'JOB_STATE_SUCCEEDED'
@@ -221,7 +223,6 @@ export const submitVideoBatches = async ({
       ai,
       config,
       state,
-      statePath,
       items: currentItems,
       lines: currentLines,
       logger,
@@ -294,7 +295,7 @@ export const refreshVideoBatchStatus = async ({
   logger = console,
   ai = createGeminiClient(config),
 } = {}) => {
-  const state = await readState(config.videoBatchStatePath)
+  const state = await readState(config)
   for (const job of state.jobs) {
     if (job.imported || terminalStates.has(job.state)) continue
     const remote = await ai.batches.get({ name: job.name })
@@ -307,7 +308,7 @@ export const refreshVideoBatchStatus = async ({
     job.batchStats = remote.batchStats || remote.batch_stats
     logger.log(`${job.name}: ${job.state}`)
   }
-  await writeState(config.videoBatchStatePath, state)
+  await writeState(config, state)
   return state.jobs.map((job) => ({
     name: job.name,
     state: job.state,
@@ -369,7 +370,7 @@ export const importVideoBatches = async ({
   client = createQdrantClient(config),
 } = {}) => {
   await ensureCollection({ client, config })
-  const state = await readState(config.videoBatchStatePath)
+  const state = await readState(config)
   let imported = 0
   let stale = 0
   let failed = 0
@@ -437,7 +438,7 @@ export const importVideoBatches = async ({
         logger.error(`Gemini-tiedoston ${fileName} poisto epäonnistui: ${error.message}`)
       }
     }
-    await writeState(config.videoBatchStatePath, state)
+    await writeState(config, state)
   }
 
   return { imported, stale, failed }

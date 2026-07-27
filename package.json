@@ -1,17 +1,16 @@
 {
-  "name": "kaatisbotti",
-  "version": "1.2.0",
-  "description": "hyvää kontenttia/good content",
+  "name": "kaatis",
+  "version": "2.0.0",
+  "description": "kaatis.party media archive",
+  "private": true,
   "type": "module",
-  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "dependencies": {
-    "@google/genai": "^2.13.0",
-    "@qdrant/js-client-rest": "^1.18.0",
-    "axios": "^1.18.1",
     "csv-parse": "^7.0.1",
-    "discord.js": "^14.27.0",
-    "dotenv": "^9.0.2",
-    "sharp": "^0.35.3"
+    "dotenv": "^9.0.2"
   },
   "devDependencies": {
     "eslint": "^7.27.0",
@@ -20,9 +19,15 @@
   },
   "scripts": {
     "test": "node --test",
-    "start": "node src/index.js",
+    "start": "npm run start --workspace @kaatis/api",
+    "dev": "npm run dev --workspace @kaatis/web",
+    "build": "npm run build --workspace @kaatis/web",
+    "api:start": "npm run start --workspace @kaatis/api",
+    "bot:start": "npm run start --workspace @kaatis/bot",
     "media:migrate": "node src/migrateMediaStore.js",
-    "search:start": "node src/search/server.js",
+    "media:backfill": "npm run backfill --workspace @kaatis/api",
+    "media:migrate-batches": "npm run migrate-batches --workspace @kaatis/api",
+    "search:start": "npm run start --workspace @kaatis/api",
     "search:index": "node src/search/indexer.js",
     "search:index:video-batch": "node src/search/batchIndexer.js"
   },
