@@ -141,6 +141,18 @@ export const createMediaStore = (dbPath) => {
     preview_version: 'INTEGER NOT NULL DEFAULT 0',
   })
 
+  const schemaVersion = Number(
+    db.prepare('PRAGMA user_version').get().user_version,
+  )
+  if (schemaVersion < 1) {
+    db.exec(`
+      DROP TRIGGER IF EXISTS media_fts_insert;
+      DROP TRIGGER IF EXISTS media_fts_delete;
+      DROP TRIGGER IF EXISTS media_fts_update;
+      DROP TABLE IF EXISTS media_fts;
+    `)
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_media_discord_message_id
       ON media(discord_message_id);
@@ -150,54 +162,6 @@ export const createMediaStore = (dbPath) => {
 
     CREATE INDEX IF NOT EXISTS idx_media_checksum
       ON media(checksum);
-
-    CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
-      filename,
-      title,
-      creator,
-      content='media',
-      content_rowid='rowid',
-      tokenize='unicode61 remove_diacritics 2'
-    );
-
-    CREATE TRIGGER IF NOT EXISTS media_fts_insert AFTER INSERT ON media BEGIN
-      INSERT INTO media_fts(rowid, filename, title, creator)
-      VALUES (
-        new.rowid,
-        new.filename,
-        new.title,
-        new.creator
-      );
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS media_fts_delete AFTER DELETE ON media BEGIN
-      INSERT INTO media_fts(media_fts, rowid, filename, title, creator)
-      VALUES (
-        'delete',
-        old.rowid,
-        old.filename,
-        old.title,
-        old.creator
-      );
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS media_fts_update AFTER UPDATE ON media BEGIN
-      INSERT INTO media_fts(media_fts, rowid, filename, title, creator)
-      VALUES (
-        'delete',
-        old.rowid,
-        old.filename,
-        old.title,
-        old.creator
-      );
-      INSERT INTO media_fts(rowid, filename, title, creator)
-      VALUES (
-        new.rowid,
-        new.filename,
-        new.title,
-        new.creator
-      );
-    END;
 
     CREATE TABLE IF NOT EXISTS media_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -258,10 +222,59 @@ export const createMediaStore = (dbPath) => {
       $title: readableFilename(row.filename),
     }))
 
-  const mediaCount = db.prepare('SELECT count(*) AS count FROM media').get().count
-  const ftsCount = db.prepare('SELECT count(*) AS count FROM media_fts').get().count
-  if (mediaCount !== ftsCount) {
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
+      filename,
+      title,
+      creator,
+      content='media',
+      content_rowid='rowid',
+      tokenize='unicode61 remove_diacritics 2'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS media_fts_insert AFTER INSERT ON media BEGIN
+      INSERT INTO media_fts(rowid, filename, title, creator)
+      VALUES (
+        new.rowid,
+        new.filename,
+        new.title,
+        new.creator
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS media_fts_delete AFTER DELETE ON media BEGIN
+      INSERT INTO media_fts(media_fts, rowid, filename, title, creator)
+      VALUES (
+        'delete',
+        old.rowid,
+        old.filename,
+        old.title,
+        old.creator
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS media_fts_update AFTER UPDATE ON media BEGIN
+      INSERT INTO media_fts(media_fts, rowid, filename, title, creator)
+      VALUES (
+        'delete',
+        old.rowid,
+        old.filename,
+        old.title,
+        old.creator
+      );
+      INSERT INTO media_fts(rowid, filename, title, creator)
+      VALUES (
+        new.rowid,
+        new.filename,
+        new.title,
+        new.creator
+      );
+    END;
+  `)
+
+  if (schemaVersion < 1) {
     db.exec("INSERT INTO media_fts(media_fts) VALUES('rebuild')")
+    db.exec('PRAGMA user_version = 1')
   }
 
   const upsert = db.prepare(`
