@@ -30,6 +30,50 @@ const formatDate = (value: string) => {
   }).format(date)
 }
 
+const DetailImage = ({ item }: { item: MediaItem | SearchMediaItem }) => {
+  const [loaded, setLoaded] = useState(false)
+  const hasPreview = Boolean(item.preview?.src)
+
+  const reveal = (image: HTMLImageElement) => {
+    void image.decode()
+      .catch(() => undefined)
+      .then(() => setLoaded(true))
+  }
+
+  return (
+    <div
+      className={[
+        'detail-image',
+        hasPreview ? 'has-preview' : '',
+        loaded ? 'is-loaded' : '',
+      ].filter(Boolean).join(' ')}
+    >
+      {hasPreview && (
+        <img
+          className="detail-image-preview"
+          src={item.preview?.src}
+          srcSet={item.preview?.srcSet}
+          sizes="100vw"
+          width={item.width || undefined}
+          height={item.height || undefined}
+          alt=""
+          aria-hidden="true"
+        />
+      )}
+      <img
+        className="detail-image-original"
+        src={item.url}
+        width={item.width || undefined}
+        height={item.height || undefined}
+        alt={item.name}
+        decoding="async"
+        fetchPriority="high"
+        onLoad={(event) => reveal(event.currentTarget)}
+      />
+    </div>
+  )
+}
+
 const DetailMedia = ({ item }: { item: MediaItem | SearchMediaItem }) => {
   const video = useRef<HTMLVideoElement>(null)
 
@@ -46,7 +90,7 @@ const DetailMedia = ({ item }: { item: MediaItem | SearchMediaItem }) => {
   }, [item])
 
   if (item.type === 'image') {
-    return <img src={item.url} alt={item.name} />
+    return <DetailImage key={item.url} item={item} />
   }
   if (item.type === 'video') {
     return (

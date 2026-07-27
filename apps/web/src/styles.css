@@ -299,12 +299,51 @@ a {
   background: #050505;
 }
 
-.detail-media > img,
 .detail-media > video {
   display: block;
   max-width: 100%;
   max-height: calc(100vh - 96px);
   object-fit: contain;
+}
+
+.detail-image {
+  display: grid;
+  max-width: 100%;
+  max-height: calc(100vh - 96px);
+  overflow: hidden;
+  place-items: center;
+  background: #050505;
+}
+
+.detail-image > img {
+  display: block;
+  grid-area: 1 / 1;
+  max-width: 100%;
+  max-height: calc(100vh - 96px);
+  object-fit: contain;
+}
+
+.detail-image-preview {
+  filter: blur(18px);
+  transform: scale(1.025);
+  transition: opacity 180ms ease;
+}
+
+.detail-image-original {
+  position: relative;
+  transition: opacity 180ms ease;
+}
+
+.detail-image.has-preview .detail-image-original {
+  opacity: 0;
+}
+
+.detail-image.has-preview.is-loaded .detail-image-preview {
+  opacity: 0;
+}
+
+.detail-image.has-preview.is-loaded .detail-image-original {
+  opacity: 1;
 }
 
 .detail-audio {
@@ -420,8 +459,13 @@ a {
     padding: 56px 0 0;
   }
 
-  .detail-media > img,
   .detail-media > video {
+    width: 100%;
+    max-height: calc(100vh - 70px);
+  }
+
+  .detail-image,
+  .detail-image > img {
     width: 100%;
     max-height: calc(100vh - 70px);
   }
@@ -438,6 +482,11 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .tile-media {
+    transition: none;
+  }
+
+  .detail-image-preview,
+  .detail-image-original {
     transition: none;
   }
 
