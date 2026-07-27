@@ -1,7 +1,13 @@
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { getSearchConfig } from '../../../src/search/config.js'
+
+const appRoot = fileURLToPath(new URL('../../../', import.meta.url))
+const appPath = (value: string) => (
+  path.isAbsolute(value) ? value : path.resolve(appRoot, value)
+)
 
 const positiveNumber = (value: string | undefined, fallback: number) => {
   const parsed = Number(value)
@@ -13,10 +19,13 @@ export const getApiConfig = (env = process.env) => {
 
   return {
     ...search,
+    mediaDbPath: appPath(search.mediaDbPath),
+    uploadDirectory: appPath(search.uploadDirectory),
+    videoBatchStatePath: appPath(search.videoBatchStatePath),
     apiPort: positiveNumber(env.API_PORT, 3000),
     apiHost: env.API_HOST || '0.0.0.0',
     internalToken: env.SEARCH_INTERNAL_TOKEN || '',
-    previewRoot: env.PREVIEW_ROOT || 'data/thumbs',
+    previewRoot: appPath(env.PREVIEW_ROOT || 'data/thumbs'),
     previewVersion: positiveNumber(env.PREVIEW_VERSION, 1),
     previewWidths: [320, 640, 1280],
     previewImageQuality: positiveNumber(env.PREVIEW_IMAGE_QUALITY, 80),
