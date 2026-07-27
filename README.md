@@ -20,12 +20,13 @@ SQLite on metadatan lähde. Qdrant sisältää vain hakua varten tarvittavat vek
 
 ## Palvelut
 
-Compose käynnistää neljä palvelua.
+Compose käynnistää viisi palvelua.
 
-1. `edge` palvelee selainbuildin, esikatselut ja alkuperäiset tiedostot Caddyllä.
-2. `api` omistaa kaikki kirjoitukset mediahakemistoon, SQLiteen ja Qdrantiin.
-3. `bot` välittää Discord tapahtumat sisäiselle APIlle.
-4. `qdrant` suorittaa vektorihaun.
+1. `init` valmistelee kirjoitettavien hakemistojen omistajuudet.
+2. `edge` palvelee selainbuildin, esikatselut ja alkuperäiset tiedostot Caddyllä.
+3. `api` omistaa kaikki kirjoitukset mediahakemistoon, SQLiteen ja Qdrantiin.
+4. `bot` välittää Discord tapahtumat sisäiselle APIlle.
+5. `qdrant` suorittaa vektorihaun.
 
 Vain Caddy avaa host portin. Tuotannossa hostin Apache voi jatkaa `kaatis.party` vhostin välittämistä osoitteeseen `127.0.0.1:8089`.
 

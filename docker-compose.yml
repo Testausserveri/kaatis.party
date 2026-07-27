@@ -1,4 +1,25 @@
 services:
+  init:
+    image: kaatis-app:local
+    restart: "no"
+    user: root
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /app/data/thumbs /app/public/.incoming
+        chown node:node /app/data /app/data/thumbs /app/public /app/public/.incoming
+    volumes:
+      - ./public:/app/public
+      - ./data:/app/data
+
   edge:
     build:
       context: .
@@ -58,6 +79,8 @@ services:
       retries: 10
       start_period: 20s
     depends_on:
+      init:
+        condition: service_completed_successfully
       qdrant:
         condition: service_started
 
