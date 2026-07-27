@@ -1,0 +1,19 @@
+FROM node:24.18.0-bookworm-slim AS web
+
+WORKDIR /app
+
+COPY package.json package-lock.json tsconfig.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/bot/package.json apps/bot/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN npm ci
+
+COPY apps/web apps/web
+COPY packages packages
+RUN npm run build --workspace @kaatis/web
+
+FROM caddy:2.11.4-alpine
+
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=web /app/apps/web/dist /srv/web

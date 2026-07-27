@@ -1,51 +1,91 @@
-version: "3.9"
 services:
-  bot:
-    image: node:24
-    user: "node"
-    working_dir: /home/node/app
+  edge:
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    image: kaatis-edge:local
+    restart: always
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /config
+      - /data
     volumes:
-      - ./public/:/home/node/app/public
-      - .:/home/node/app
-    command: npm start
+      - ./public:/srv/media:ro
+      - ./data/thumbs:/srv/thumbs:ro
+    ports:
+      - 127.0.0.1:${HTTP_PORT:-8089}:80
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: kaatis-app:local
+    restart: always
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: node
+    working_dir: /app
+    command: npm run api:start
     env_file:
       - .env
-    depends_on:
-      - search
-  http:
-    image: ghcr.io/testausserveri/arm64v8-apache2:latest
+    environment:
+      API_PORT: 3000
+      MEDIA_DB_PATH: ${MEDIA_DB_PATH:-data/kaatis.sqlite}
+      PREVIEW_ROOT: data/thumbs
+      QDRANT_URL: http://qdrant:6333
+      UPLOAD_DIR: public
     volumes:
-      - ./public/:/var/www/html/
-      - ./apache-vhost.conf:/etc/apache2/sites-enabled/000-default.conf
-    command: sh -c "a2enmod proxy proxy_http && apachectl -D FOREGROUND"
-    ports:
-      - ${HTTP_PORT:-8080}:80
+      - ./public:/app/public
+      - ./data:/app/data
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/api/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     depends_on:
-      - search
-  qdrant:
-    image: qdrant/qdrant:latest
+      qdrant:
+        condition: service_started
+
+  bot:
+    image: kaatis-app:local
     restart: always
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: node
+    working_dir: /app
+    command: npm run bot:start
+    env_file:
+      - .env
+    environment:
+      KAATIS_API_URL: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.3
+    restart: always
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./data/qdrant:/qdrant/storage
     expose:
       - "6333"
-  search:
-    build:
-      context: .
-      dockerfile: Dockerfile.search
-    image: kaatis-search:local
-    restart: always
-    user: "node"
-    working_dir: /home/node/app
-    volumes:
-      - ./public/:/home/node/app/public
-      - .:/home/node/app
-    environment:
-      QDRANT_URL: http://qdrant:6333
-    env_file:
-      - .env
-    command: npm run search:start
-    depends_on:
-      - qdrant
-    ports:
-      - 127.0.0.1:${SEARCH_HOST_PORT:-3095}:3000
