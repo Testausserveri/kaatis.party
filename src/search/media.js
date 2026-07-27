@@ -31,6 +31,9 @@ const geminiImageMimes = new Set(['image/jpeg', 'image/png'])
 export { fileExtension, readableFilename }
 
 export const isImageFilename = (filename) => mediaTypeForFilename(filename) === 'image'
+export const isVideoFilename = (filename) => mediaTypeForFilename(filename) === 'video'
+export const isIndexableFilename = (filename) => ['image', 'video']
+  .includes(mediaTypeForFilename(filename))
 
 export const safeMediaFilename = (filename) => {
   const normalized = path.posix.normalize(String(filename || '').replace(/\\/g, '/'))
@@ -82,6 +85,8 @@ export const mediaPayload = ({
   sourceTextHash,
   config,
   convertedForEmbedding,
+  embeddingInputVersion = config.embeddingInputVersion,
+  extra = {},
 }) => ({
   filename: media.filename,
   url: media.url,
@@ -89,17 +94,18 @@ export const mediaPayload = ({
   creator: media.creator,
   modified: media.modified,
   discordMessageId: media.discordMessageId,
-  mediaType: 'image',
+  mediaType: media.mediaType,
   extension: media.extension,
   checksum,
   sourceTextHash,
   embeddingModel: config.embeddingModel,
   embeddingDimensions: config.embeddingDimensions,
-  embeddingInputVersion: config.embeddingInputVersion,
+  embeddingInputVersion,
   fileSize: media.fileSize,
   fileMtimeMs: media.fileMtimeMs,
   convertedForEmbedding,
   indexedAt: new Date().toISOString(),
+  ...extra,
 })
 
 export const payloadMatches = ({
@@ -107,12 +113,13 @@ export const payloadMatches = ({
   checksum,
   sourceTextHash,
   config,
+  embeddingInputVersion = config.embeddingInputVersion,
 }) => payload
   && payload.checksum === checksum
   && payload.sourceTextHash === sourceTextHash
   && payload.embeddingModel === config.embeddingModel
   && Number(payload.embeddingDimensions) === config.embeddingDimensions
-  && payload.embeddingInputVersion === config.embeddingInputVersion
+  && payload.embeddingInputVersion === embeddingInputVersion
 
 const mediaFromFile = async ({ config, filename, row }) => {
   const filePath = path.join(config.uploadDirectory, filename)
@@ -135,6 +142,7 @@ const mediaFromFile = async ({ config, filename, row }) => {
     filePath,
     extension,
     mimeType: imageMimeByExtension.get(extension),
+    mediaType: row.media_type,
     name: apiItem.name,
     keywords: apiItem.keywords,
     creator: row.creator || '',
@@ -147,7 +155,7 @@ const mediaFromFile = async ({ config, filename, row }) => {
 
 export const readIndexedMediaFile = async ({ config, filename, store }) => {
   const safeFilename = safeMediaFilename(filename)
-  if (!safeFilename || !isImageFilename(safeFilename)) return null
+  if (!safeFilename || !isIndexableFilename(safeFilename)) return null
 
   const mediaStore = store || createMediaStore(config.mediaDbPath)
   const shouldClose = !store
@@ -169,7 +177,7 @@ export const readIndexedMediaFile = async ({ config, filename, store }) => {
 export const readIndexedMedia = async (config, { store } = {}) => {
   const mediaStore = store || createMediaStore(config.mediaDbPath)
   const shouldClose = !store
-  const rows = mediaStore.listMedia().filter((row) => row.media_type === 'image')
+  const rows = mediaStore.listMedia().filter((row) => ['image', 'video'].includes(row.media_type))
 
   const media = []
   try {

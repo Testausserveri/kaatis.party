@@ -20,7 +20,7 @@ import {
   absoluteMediaUrl,
   buildMemeSearchQuery,
   defaultMemeSlashCommandName,
-  isMemeImageFilename,
+  isMemeIndexableFilename,
   isMemeSlashCommand,
   isMemeSearchCommand,
   legacyMemeMessageCommandNames,
@@ -117,7 +117,7 @@ async function removeUploads(filenames) {
 }
 
 async function indexUploadedMeme(filename) {
-  if (!isMemeImageFilename(filename)) return
+  if (!isMemeIndexableFilename(filename)) return
 
   if (!searchInternalToken) {
     console.error(`Tiedoston ${filename} automaattinen indeksointi ohitettiin: SEARCH_INTERNAL_TOKEN puuttuu`)
@@ -138,25 +138,25 @@ async function indexUploadedMeme(filename) {
 }
 
 async function deleteIndexedMemes(filenames) {
-  const imageFilenames = filenames.filter(isMemeImageFilename)
-  if (imageFilenames.length === 0) return
+  const indexedFilenames = filenames.filter(isMemeIndexableFilename)
+  if (indexedFilenames.length === 0) return
 
   if (!searchInternalToken) {
-    console.error(`Tiedostojen ${imageFilenames.join(', ')} indeksipoisto ohitettiin: SEARCH_INTERNAL_TOKEN puuttuu`)
+    console.error(`Tiedostojen ${indexedFilenames.join(', ')} indeksipoisto ohitettiin: SEARCH_INTERNAL_TOKEN puuttuu`)
     return
   }
 
   try {
     const { data } = await axios.delete(memeIndexUrl, {
       headers: { 'x-kaatis-internal-token': searchInternalToken },
-      data: { filenames: imageFilenames },
+      data: { filenames: indexedFilenames },
       timeout: 30000,
     })
     console.log(`Poistettu ${data.deleted} tiedosto(a) hakuindeksistä`)
   } catch (e) {
     const status = e.response?.status ? ` HTTP ${e.response.status}` : ''
     const error = e.response?.data?.error || e.message
-    console.error(`Tiedostojen ${imageFilenames.join(', ')} indeksipoisto epäonnistui:${status} ${error}`)
+    console.error(`Tiedostojen ${indexedFilenames.join(', ')} indeksipoisto epäonnistui:${status} ${error}`)
   }
 }
 

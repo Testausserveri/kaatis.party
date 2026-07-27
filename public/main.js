@@ -215,12 +215,16 @@ const searchResultsToMedia = (results) => {
     return {
       ...current,
       filename: result.filename,
-      type: 'image',
+      type: result.type || current.type || extractType(result.filename),
       name: result.name || current.name || result.filename,
       creator: result.creator || current.creator || '',
       modified: result.modified || current.modified || '',
       url: result.url || current.url || `${baseUrl}${result.filename}`,
       score: result.score,
+      similarityScore: result.similarityScore,
+      matchedModality: result.matchedModality,
+      matchStartSeconds: result.matchStartSeconds,
+      matchEndSeconds: result.matchEndSeconds,
     }
   })
 }

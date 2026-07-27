@@ -30,7 +30,10 @@ services:
     expose:
       - "6333"
   search:
-    image: node:24
+    build:
+      context: .
+      dockerfile: Dockerfile.search
+    image: kaatis-search:local
     restart: always
     user: "node"
     working_dir: /home/node/app

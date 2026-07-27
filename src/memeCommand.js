@@ -158,8 +158,12 @@ export const absoluteMediaUrl = ({ publicBaseUrl, mediaUrl }) => {
 }
 
 const imageFilenamePattern = /\.(avif|gif|jpe?g|png|webp)$/i
+const searchableFilenamePattern = /\.(avif|gif|jpe?g|png|webp|mp4|mov|webm)$/i
 
 export const isMemeImageFilename = (filename) => imageFilenamePattern.test(String(filename || ''))
+export const isMemeIndexableFilename = (filename) => (
+  searchableFilenamePattern.test(String(filename || ''))
+)
 
 export const mediaFilenameFromUrl = ({ publicBaseUrl, value }) => {
   try {
@@ -168,7 +172,7 @@ export const mediaFilenameFromUrl = ({ publicBaseUrl, value }) => {
     if (parsed.origin !== base.origin) return ''
 
     const filename = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || '')
-    return imageFilenamePattern.test(filename) ? filename : ''
+    return searchableFilenamePattern.test(filename) ? filename : ''
   } catch {
     return ''
   }

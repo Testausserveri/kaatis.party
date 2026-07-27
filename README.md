@@ -18,7 +18,7 @@ Liven up your community!
 
 - Archived memes can be viewed from a minimalist **Apache file listing**. How dank! 🚀🙌
 
-- Media metadata is stored in **SQLite**. Images can be indexed into a self-hosted **Qdrant** vector database and searched semantically with **Gemini Embedding 2**. The indexer reads the existing files in place and stores only vectors plus search payload metadata; it does not copy the media library.
+- Media metadata is stored in **SQLite**. Images and videos can be indexed into a self-hosted **Qdrant** vector database and searched semantically with **Gemini Embedding 2**. Videos use a six-frame storyboard plus audio embeddings and only the first five minutes are indexed. The indexer stores vectors and search payload metadata, not media copies.
 
 - `/kaatis` works in any channel: it reads that channel's latest messages, searches for a fitting indexed image, and replies with its public URL so Discord renders it as an image. `!meemi` still works as a text-command fallback.
 - `/kaatis hakusana:<teksti>` searches directly with that query.
@@ -39,10 +39,10 @@ Note: By default, all images by bots and webhooks are ignored. However, webhooks
 
 3. Run the bot and the Apache web server in different Docker containers: `docker compose -f docker-compose.yml up`.
 
-## semantic image search
+## semantic media search
 
-Semantic search indexes current images only. Videos, audio and PDFs stay out of
-scope until the cost and UX are worth it.
+Semantic search indexes images and videos. Standalone audio files and PDFs remain
+outside the search index.
 
 1. Add `GEMINI_API_KEY` to `.env`.
 
@@ -71,6 +71,21 @@ scope until the cost and UX are worth it.
    ```sh
    docker compose run --rm -e SEARCH_INDEX_LIMIT=25 -e SEARCH_DELETE_STALE=false search npm run search:index
    ```
+
+   The normal indexer defaults to images (`SEARCH_INDEX_MEDIA_TYPES=image`) and
+   uses interactive embedding calls. For videos, use the asynchronous Gemini
+   Batch API at half the embedding price:
+
+   ```sh
+   docker compose run --rm -e SEARCH_INDEX_LIMIT=25 search \
+     npm run search:index:video-batch -- submit
+   docker compose run --rm search npm run search:index:video-batch -- status
+   docker compose run --rm search npm run search:index:video-batch -- import
+   ```
+
+   Start with the limited submit, inspect and import it, then submit the full
+   backfill without `SEARCH_INDEX_LIMIT`. Batch state is stored under `data/`
+   so status checks and imports can be resumed safely.
 
 5. The media Apache container proxies `/api/search` and `/api/media` to the internal search
    service through `apache-vhost.conf`, so host Apache can keep forwarding all
@@ -109,11 +124,30 @@ Useful knobs:
 - `SEARCH_RATE_LIMIT_MAX`, default: `60`
 - `SEARCH_GLOBAL_RATE_LIMIT_MAX`, default: `300`
 - `SEARCH_INDEX_CONCURRENCY`, default: `2`
+- `SEARCH_INDEX_MEDIA_TYPES`, default: `image`
 - `SEARCH_INDEX_LIMIT`, default: unset / full index
 - `SEARCH_INDEX_MATCH`, default: unset / all files. Accepts comma-separated filename substrings for targeted reindexing.
 - `SEARCH_DELETE_STALE`, default: `true`
+- `SEARCH_VIDEO_AUDIO_MIN_SCORE`, default: `0.6`
+- `SEARCH_VIDEO_STORYBOARD_MIN_SCORE`, default: `0.45`
+- `SEARCH_VIDEO_MAX_DURATION_SECONDS`, default: `300`
+- `SEARCH_VIDEO_STORYBOARD_FRAMES`, default: `6`
+- `SEARCH_VIDEO_AUDIO_SEGMENT_SECONDS`, default: `155`
+- `SEARCH_VIDEO_AUDIO_OVERLAP_SECONDS`, default: `5`
+- `SEARCH_VIDEO_BATCH_FILES`, default: `50`
+- `SEARCH_VIDEO_BATCH_MAX_BYTES`, default: `104857600`
+- `SEARCH_VIDEO_BATCH_STATE_PATH`, default: `search-video-batches.json` next
+  to `MEDIA_DB_PATH`
 
 The Discord meme command sends `cache=0` with `SEARCH_INTERNAL_TOKEN`, because
-each query contains live channel context. New image uploads use the same token
-to request immediate indexing from the internal search service. Public searches
-cannot bypass the query cache and are rate-limited by the search service.
+each query contains live channel context. New image and video uploads use the
+same token to request immediate indexing from the internal search service;
+video indexing continues asynchronously after the request is accepted. Public
+searches cannot bypass the query cache and are rate-limited by the search service.
+
+Search results rank images separately from video audio and storyboard components.
+A video is eligible only when its best component passes that modality's minimum
+score. Eligible images and videos are interleaved with a normalized
+reciprocal-rank score. The API response field `score` contains that cross-media
+ranking score; `similarityScore` retains the selected image or video component's
+original cosine similarity.
