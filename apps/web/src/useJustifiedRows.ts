@@ -19,7 +19,7 @@ const aspectRatio = (item: MediaItem | SearchMediaItem) => {
 }
 
 const targetHeight = (width: number) => {
-  if (width <= 600) return 120
+  if (width <= 600) return 168
   if (width <= 1000) return 160
   return 220
 }
