@@ -46,7 +46,7 @@
 	handle {
 		root * /srv/web
 		try_files {path} /index.html
-		header Cache-Control "no-cache"
+		header Cache-Control "no-store"
 		file_server
 	}
 
