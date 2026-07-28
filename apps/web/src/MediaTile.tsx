@@ -6,16 +6,25 @@ import type {
 } from '@kaatis/contracts'
 import { Link, useRouter } from './router.tsx'
 
-const MotionPreview = ({ item }: { item: MediaItem }) => {
+const MotionPreview = ({
+  item,
+  active,
+}: {
+  item: MediaItem
+  active: boolean
+}) => {
   const root = useRef<HTMLVideoElement>(null)
-  const [active, setActive] = useState(false)
+  const [nearViewport, setNearViewport] = useState(false)
+  const [initialized, setInitialized] = useState(false)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (!root.current) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const video = root.current
     const observer = new IntersectionObserver(([entry]) => {
-      setActive(entry.isIntersecting)
+      setNearViewport(entry.isIntersecting)
+      if (entry.isIntersecting) setInitialized(true)
       if (!entry.isIntersecting) video.pause()
     }, {
       rootMargin: '240px',
@@ -26,29 +35,50 @@ const MotionPreview = ({ item }: { item: MediaItem }) => {
 
   useEffect(() => {
     const video = root.current
-    if (!video || !active) return
+    if (!video) return
+    if (!active || !nearViewport) {
+      video.pause()
+      return
+    }
     void video.play().catch(() => {})
-  }, [active])
+  }, [active, nearViewport])
 
   return (
-    <video
-      ref={root}
-      className="tile-media"
-      src={active ? item.preview?.motion : undefined}
-      poster={item.preview?.src}
-      muted
-      loop
-      playsInline
-      preload="none"
-      aria-label={item.name}
-    />
+    <>
+      <img
+        className="tile-media tile-video-poster"
+        src={item.preview?.src}
+        srcSet={item.preview?.srcSet}
+        sizes="(max-width: 600px) 45vw, (max-width: 1000px) 30vw, 22vw"
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+      />
+      <video
+        ref={root}
+        className={`tile-media tile-video${ready ? ' is-ready' : ''}`}
+        src={initialized ? item.preview?.motion : undefined}
+        poster={item.preview?.src}
+        muted
+        loop
+        playsInline
+        preload="none"
+        aria-label={item.name}
+        onLoadedData={() => setReady(true)}
+        onEmptied={() => setReady(false)}
+        onError={() => setReady(false)}
+      />
+    </>
   )
 }
 
 export const MediaTile = ({
   item,
+  active = true,
 }: {
   item: MediaItem | SearchMediaItem
+  active?: boolean
 }) => {
   const { location } = useRouter()
   const [failed, setFailed] = useState(false)
@@ -78,7 +108,7 @@ export const MediaTile = ({
         />
       )}
       {item.type === 'video' && hasPreview && !failed && (
-        <MotionPreview item={item} />
+        <MotionPreview item={item} active={active} />
       )}
       {item.type === 'audio' && (
         <span className="audio-tile">

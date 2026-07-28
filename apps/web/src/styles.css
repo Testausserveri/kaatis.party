@@ -24,6 +24,14 @@ html {
   background: #0b0b0b;
 }
 
+html.detail-open {
+  overflow: hidden;
+}
+
+html.detail-open body {
+  width: calc(100% - var(--kaatis-scrollbar-width, 0px));
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -148,6 +156,11 @@ a {
   padding: 4px;
 }
 
+.gallery-view.is-suspended {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .gallery {
   width: 100%;
   min-height: 30vh;
@@ -184,12 +197,25 @@ a {
 }
 
 .tile-media {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
   object-fit: cover;
   transition: filter 120ms ease;
+}
+
+.tile-video {
+  opacity: 0;
+  transition:
+    filter 120ms ease,
+    opacity 120ms ease;
+}
+
+.tile-video.is-ready {
+  opacity: 1;
 }
 
 .media-tile:hover .tile-media {
@@ -262,7 +288,14 @@ a {
 }
 
 .detail-page {
-  min-height: 100vh;
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #0b0b0b;
 }
 
@@ -482,6 +515,10 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .tile-media {
+    transition: none;
+  }
+
+  .tile-video {
     transition: none;
   }
 

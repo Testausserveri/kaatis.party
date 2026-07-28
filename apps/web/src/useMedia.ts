@@ -31,7 +31,7 @@ const storeSnapshot = (query: string, snapshot: MediaSnapshot) => {
   }
 }
 
-export const useMedia = (query: string) => {
+export const useMedia = (query: string, enabled = true) => {
   const normalizedQuery = query.trim()
   const initial = cachedSnapshot(normalizedQuery)
   const [items, setItems] = useState<GalleryItem[]>(initial?.items || [])
@@ -44,7 +44,7 @@ export const useMedia = (query: string) => {
     nextCursor: string | null,
     replace: boolean,
   ) => {
-    if (normalizedQuery) return
+    if (!enabled || normalizedQuery) return
     request.current?.abort()
     const controller = new AbortController()
     request.current = controller
@@ -68,10 +68,15 @@ export const useMedia = (query: string) => {
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
-  }, [normalizedQuery])
+  }, [enabled, normalizedQuery])
 
   useEffect(() => {
     request.current?.abort()
+
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
 
     const cached = cachedSnapshot(normalizedQuery)
     if (cached) {
@@ -121,13 +126,13 @@ export const useMedia = (query: string) => {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [loadPage, normalizedQuery])
+  }, [enabled, loadPage, normalizedQuery])
 
   const loadMore = useCallback(() => {
-    if (!loading && cursor && !normalizedQuery) {
+    if (enabled && !loading && cursor && !normalizedQuery) {
       void loadPage(cursor, false)
     }
-  }, [cursor, loadPage, loading, normalizedQuery])
+  }, [cursor, enabled, loadPage, loading, normalizedQuery])
 
   return {
     items,

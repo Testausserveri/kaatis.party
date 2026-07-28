@@ -14,18 +14,20 @@ export const Gallery = ({
   error = false,
   hasMore = false,
   loadMore,
+  active = true,
 }: {
   items: (MediaItem | SearchMediaItem)[]
   loading?: boolean
   error?: boolean
   hasMore?: boolean
   loadMore?: () => void
+  active?: boolean
 }) => {
   const { root, rows } = useJustifiedRows(items)
   const sentinel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sentinel.current || !hasMore || !loadMore) return
+    if (!active || !sentinel.current || !hasMore || !loadMore) return
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) loadMore()
     }, {
@@ -33,7 +35,7 @@ export const Gallery = ({
     })
     observer.observe(sentinel.current)
     return () => observer.disconnect()
-  }, [hasMore, loadMore])
+  }, [active, hasMore, loadMore])
 
   return (
     <div ref={root} className="gallery">
@@ -52,7 +54,7 @@ export const Gallery = ({
                 flexGrow: width,
               }}
             >
-              <MediaTile item={media} />
+              <MediaTile item={media} active={active} />
             </div>
           ))}
         </div>
