@@ -41,6 +41,38 @@ services:
       api:
         condition: service_healthy
 
+  legacy:
+    image: caddy:2.11.4-alpine
+    restart: always
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    tmpfs:
+      - /config
+      - /data
+    volumes:
+      - ./Caddyfile.legacy:/etc/caddy/Caddyfile:ro
+      - ./legacy/icons:/srv/icons:ro
+      - ./public:/srv/media:ro
+    ports:
+      - 127.0.0.1:${LEGACY_HTTP_PORT:-8189}:80
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://localhost/
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   api:
     build:
       context: .

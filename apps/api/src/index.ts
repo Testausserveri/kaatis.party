@@ -20,6 +20,7 @@ import {
 import { safeMediaFilename } from '../../../src/search/media.js'
 import { getApiConfig } from './config.ts'
 import { createJobRunner } from './jobs.ts'
+import { createLegacyIndex } from './legacyIndex.ts'
 import { createMediaSearch } from './search.ts'
 import { ingestUpload } from './uploads.ts'
 
@@ -43,6 +44,7 @@ const search = createMediaSearch({
   store,
   logger: app.log,
 })
+const legacyIndex = createLegacyIndex(store)
 
 await app.register(rateLimit, {
   global: false,
@@ -160,6 +162,11 @@ app.get('/api/media/:filename', {
   const row = safe ? store.mediaByFilename(safe) : null
   if (!row) return reply.code(404).send({ error: 'not_found' })
   return mediaToApiItem(row, { publicBaseUrl: config.publicBaseUrl })
+})
+
+app.get('/legacy-index', async (request, reply) => {
+  reply.type('text/html; charset=utf-8')
+  return legacyIndex.render(request.raw.url || '/legacy-index')
 })
 
 app.get('/api/search', {

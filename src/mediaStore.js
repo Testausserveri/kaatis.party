@@ -351,6 +351,11 @@ export const createMediaStore = (dbPath) => {
   `)
   const byFilename = db.prepare('SELECT * FROM media WHERE filename = $filename')
   const list = db.prepare('SELECT * FROM media ORDER BY modified DESC, filename ASC')
+  const legacyMediaRevision = db.prepare(`
+    SELECT COUNT(*) AS count, COALESCE(MAX(updated_at), '') AS updated_at
+    FROM media
+    WHERE media_type IN ('image', 'video', 'audio')
+  `)
   const listPage = db.prepare(`
     SELECT * FROM media
     WHERE (
@@ -604,6 +609,8 @@ export const createMediaStore = (dbPath) => {
     },
 
     listMedia: () => list.all(),
+
+    legacyMediaRevision: () => legacyMediaRevision.get(),
 
     listMediaPage: ({
       cursorModified = '',

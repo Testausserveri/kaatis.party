@@ -11,6 +11,7 @@ Kaatiksen media arkisto tallentaa Discordiin lähetetyt kuvat, videot ja äänit
 | `apps/bot` | Discord tapahtumat ja `/kaatis` komento |
 | `packages/contracts` | Jaetut API tyypit |
 | `src/search` | Gemini ja Qdrant domain logiikka |
+| `legacy/icons` | Vanhan Apache listauksen alkuperäiset tiedostotyyppi ikonit |
 | `public` | Alkuperäiset mediatiedostot |
 | `data/kaatis.sqlite` | Median metadata ja pysyvät työjonot |
 | `data/thumbs` | Sisältöosoitteiset WebP ja WebM esikatselut |
@@ -20,15 +21,16 @@ SQLite on metadatan lähde. Qdrant sisältää vain hakua varten tarvittavat vek
 
 ## Palvelut
 
-Compose käynnistää viisi palvelua.
+Compose käynnistää kuusi palvelua.
 
 1. `init` valmistelee kirjoitettavien hakemistojen omistajuudet.
 2. `edge` palvelee selainbuildin, esikatselut ja alkuperäiset tiedostot Caddyllä.
-3. `api` omistaa kaikki kirjoitukset mediahakemistoon, SQLiteen ja Qdrantiin.
-4. `bot` välittää Discord tapahtumat sisäiselle APIlle.
-5. `qdrant` suorittaa vektorihaun.
+3. `legacy` palvelee old.kaatis.party Apache tyylisen tiedostolistauksen.
+4. `api` omistaa kaikki kirjoitukset mediahakemistoon, SQLiteen ja Qdrantiin.
+5. `bot` välittää Discord tapahtumat sisäiselle APIlle.
+6. `qdrant` suorittaa vektorihaun.
 
-Vain Caddy avaa host portin. Tuotannossa hostin Apache voi jatkaa `kaatis.party` vhostin välittämistä osoitteeseen `127.0.0.1:8089`.
+Caddyt avaavat vain localhost portit. Tuotannon Nginx välittää `kaatis.party` osoitteeseen `127.0.0.1:8089` ja `old.kaatis.party` osoitteeseen `127.0.0.1:8189`.
 
 ## Kehitys
 
@@ -73,6 +75,7 @@ Kopioi `.env.example` tiedostoksi `.env` ja täytä salaisuudet.
 | `PREVIEW_ROOT` | Esikatselujen polku, oletus `data/thumbs` |
 | `QDRANT_URL` | Qdrantin sisäinen osoite |
 | `HTTP_PORT` | Caddyn localhost portti, oletus `8089` |
+| `LEGACY_HTTP_PORT` | Legacy Caddyn localhost portti, oletus `8189` |
 
 Sisäinen upload hyväksyy vain HTTPS osoitteita Discordin CDN hosteilta. Tiedoston enimmäiskoko on oletuksena 256 megatavua.
 
@@ -111,6 +114,12 @@ Hakukyselyn embedding tallennetaan pysyvästi Qdrantiin. Sama kysely ei kuluta G
 `/kaatis` muodostaa viimeisistä viesteistä lyhyen hakusanan Geminillä ja hakee sopivan median. `/kaatis hakusana:<teksti>` käyttää annettua hakua suoraan.
 
 Uusi liite lähetetään APIlle Discord CDN osoitteena. API lataa tiedoston atomisesti, kirjoittaa metadatan ja jonottaa esikatselun sekä embeddingin. Discord viestin poisto poistaa alkuperäisen tiedoston, SQLite rivin, esikatselun ja Qdrant pisteet.
+
+## Legacy listaus
+
+`old.kaatis.party` näyttää SQLiteen tallennetut kuvat, videot ja äänet vanhan Apache hakemistolistauksen muodossa. Taulukon Description sarake näyttää tekijän. Tiedostonimi, päivämäärä, koko ja kuvaus ovat lajiteltavissa Apache tyylisillä otsikkolinkeillä.
+
+Legacy palvelu ei lue CSV tai `.htaccess` metadataa. Muut kuin nykyisen järjestelmän mediaformaatit palauttavat `404`.
 
 ## Tuotanto
 

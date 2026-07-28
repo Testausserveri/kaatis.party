@@ -1,0 +1,46 @@
+:80 {
+	encode zstd gzip
+
+	header {
+		-Server
+		Content-Security-Policy "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; sandbox"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+	}
+
+	@root path /
+	handle @root {
+		rewrite * /legacy-index
+		reverse_proxy api:3000
+	}
+
+	@icons path /icons/blank.gif /icons/image2.gif /icons/movie.gif /icons/sound2.gif
+	handle @icons {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	@incoming path /.incoming/*
+	respond @incoming 404
+
+	@media {
+		path /*.jpg /*.jpeg /*.png /*.gif /*.webp /*.bmp /*.svg /*.ico /*.tiff /*.tif /*.heic /*.heif /*.avif /*.mp4 /*.webm /*.mov /*.avi /*.mkv /*.flv /*.wmv /*.m4v /*.3gp /*.ogv /*.mp3 /*.wav /*.ogg /*.flac /*.m4a /*.aac /*.wma /*.aiff
+		file {
+			root /srv/media
+			try_files {path}
+		}
+	}
+	handle @media {
+		root * /srv/media
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	respond 404
+
+	log {
+		output stdout
+		format json
+	}
+}
