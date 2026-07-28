@@ -67,7 +67,7 @@ services:
         - -q
         - -O
         - /dev/null
-        - http://localhost/
+        - http://localhost/icons/blank.gif
       interval: 15s
       timeout: 5s
       retries: 5
