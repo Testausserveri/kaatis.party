@@ -590,6 +590,26 @@ export const createMediaStore = (dbPath) => {
       return byFilename.get({ $filename: parameters.$filename })
     },
 
+    saveRecoveredMedia: (media) => {
+      const parameters = mediaParameters(media)
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        upsert.run(parameters)
+        if (parameters.$mediaType !== 'audio') {
+          enqueueJob.run({
+            $kind: 'preview_only',
+            $filename: parameters.$filename,
+            $now: parameters.$now,
+          })
+        }
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      return byFilename.get({ $filename: parameters.$filename })
+    },
+
     filenamesForMessage: (discordMessageId) => byMessage
       .all({ $discordMessageId: discordMessageId })
       .map((row) => row.filename),

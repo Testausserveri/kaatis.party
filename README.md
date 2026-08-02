@@ -95,6 +95,16 @@ Työjono on SQLitessä. Keskeytynyt ajo jatkuu seuraavalla API käynnistyksellä
 
 Esikatselujen backfill ei lähetä vanhoja medioita uudelleen Geminille. Videoiden semanttinen backfill käyttää erillistä Gemini Batch ajoa.
 
+Jos `public/` hakemistossa on mediatiedostoja ilman SQLite riviä, ne voi
+palauttaa Qdrantin metadatasta ilman uusia embedding kutsuja.
+
+```sh
+docker compose run --rm api npm run media:reconcile -- --dry-run
+docker compose run --rm api npm run media:reconcile
+```
+
+Komento lisää vain puuttuvat rivit ja jonottaa niille `preview_only` työt.
+
 ```sh
 docker compose run --rm api npm run search:index:video-batch -- submit
 docker compose run --rm api npm run search:index:video-batch -- status

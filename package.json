@@ -25,6 +25,7 @@
     "api:start": "npm run start --workspace @kaatis/api",
     "bot:start": "npm run start --workspace @kaatis/bot",
     "media:migrate": "node src/migrateMediaStore.js",
+    "media:reconcile": "node src/reconcileMediaStore.js",
     "media:backfill": "npm run backfill --workspace @kaatis/api",
     "media:migrate-batches": "npm run migrate-batches --workspace @kaatis/api",
     "search:start": "npm run start --workspace @kaatis/api",
