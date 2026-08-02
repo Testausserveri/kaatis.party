@@ -3,6 +3,10 @@ import {
   useLayoutEffect,
   useState,
 } from 'react'
+import type {
+  MediaItem,
+  SearchMediaItem,
+} from '@kaatis/contracts'
 
 import { Gallery } from './Gallery.tsx'
 import { Header } from './Header.tsx'
@@ -10,12 +14,24 @@ import { MediaDetail } from './MediaDetail.tsx'
 import { useRouter } from './router.tsx'
 import { useMedia } from './useMedia.ts'
 
-const GalleryPage = ({ active }: { active: boolean }) => {
+type GalleryItem = MediaItem | SearchMediaItem
+
+const GalleryPage = ({
+  active,
+  onItemsChange,
+}: {
+  active: boolean
+  onItemsChange: (items: GalleryItem[]) => void
+}) => {
   const { location, navigate } = useRouter()
   const [query, setQuery] = useState(
     () => new URLSearchParams(location.search).get('q') || '',
   )
   const media = useMedia(query, active)
+
+  useEffect(() => {
+    onItemsChange(media.items)
+  }, [media.items, onItemsChange])
 
   useEffect(() => {
     if (!active) return
@@ -58,6 +74,7 @@ export const App = () => (
 
 const CurrentPage = () => {
   const { location } = useRouter()
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([])
   const detailFilename = location.pathname.startsWith('/m/')
     ? location.pathname.slice(3)
     : null
@@ -80,8 +97,16 @@ const CurrentPage = () => {
 
   return (
     <>
-      <GalleryPage active={!detailOpen} />
-      {detailFilename !== null && <MediaDetail filename={detailFilename} />}
+      <GalleryPage
+        active={!detailOpen}
+        onItemsChange={setGalleryItems}
+      />
+      {detailFilename !== null && (
+        <MediaDetail
+          filename={detailFilename}
+          navigationItems={galleryItems}
+        />
+      )}
     </>
   )
 }

@@ -113,7 +113,27 @@ const DetailMedia = ({ item }: { item: MediaItem | SearchMediaItem }) => {
   )
 }
 
-export const MediaDetail = ({ filename }: { filename: string }) => {
+const stateRecord = (state: unknown): Record<string, unknown> => (
+  state && typeof state === 'object' && !Array.isArray(state)
+    ? state as Record<string, unknown>
+    : {}
+)
+
+const ignoresGalleryArrows = (target: EventTarget | null) => (
+  target instanceof HTMLInputElement
+  || target instanceof HTMLTextAreaElement
+  || target instanceof HTMLSelectElement
+  || target instanceof HTMLMediaElement
+  || (target instanceof HTMLElement && target.isContentEditable)
+)
+
+export const MediaDetail = ({
+  filename,
+  navigationItems,
+}: {
+  filename: string
+  navigationItems: (MediaItem | SearchMediaItem)[]
+}) => {
   let decodedFilename = ''
   try {
     decodedFilename = decodeURIComponent(filename)
@@ -124,23 +144,28 @@ export const MediaDetail = ({ filename }: { filename: string }) => {
   const stateItem = (
     location.state as { media?: SearchMediaItem } | null
   )?.media
-  const [item, setItem] = useState<MediaItem | SearchMediaItem | null>(
-    stateItem?.filename === decodedFilename ? stateItem : null,
-  )
+  const [fetchedItem, setFetchedItem] = useState<MediaItem | null>(null)
+  const item = stateItem?.filename === decodedFilename
+    ? stateItem
+    : fetchedItem?.filename === decodedFilename
+      ? fetchedItem
+      : null
   const [similar, setSimilar] = useState<SearchMediaItem[]>([])
   const [copied, setCopied] = useState(false)
+  const detailRoot = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    if (!item || item.filename !== decodedFilename) {
+    if (!item) {
       getMedia(decodedFilename, controller.signal)
-        .then(setItem)
+        .then(setFetchedItem)
         .catch(() => navigate('/', { replace: true }))
     }
     return () => controller.abort()
   }, [decodedFilename, item, navigate])
 
   useEffect(() => {
+    setSimilar([])
     if (!item || item.type === 'audio') return
     const controller = new AbortController()
     getSimilar(item.filename, controller.signal)
@@ -150,15 +175,46 @@ export const MediaDetail = ({ filename }: { filename: string }) => {
   }, [item])
 
   useEffect(() => {
+    detailRoot.current?.scrollTo({ top: 0 })
+  }, [decodedFilename])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         if ((location.state as { from?: string } | null)?.from) navigate(-1)
         else navigate('/')
+        return
       }
+
+      if (
+        !['ArrowLeft', 'ArrowRight'].includes(event.key)
+        || event.altKey
+        || event.ctrlKey
+        || event.metaKey
+        || event.shiftKey
+        || ignoresGalleryArrows(event.target)
+      ) return
+
+      const currentIndex = navigationItems.findIndex(
+        (candidate) => candidate.filename === decodedFilename,
+      )
+      if (currentIndex < 0) return
+      const offset = event.key === 'ArrowLeft' ? -1 : 1
+      const next = navigationItems[currentIndex + offset]
+      if (!next) return
+
+      event.preventDefault()
+      navigate(`/m/${encodeURIComponent(next.filename)}`, {
+        replace: true,
+        state: {
+          ...stateRecord(location.state),
+          media: next,
+        },
+      })
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [location.state, navigate])
+  }, [decodedFilename, location.state, navigate, navigationItems])
 
   if (!item) return null
 
@@ -175,7 +231,7 @@ export const MediaDetail = ({ filename }: { filename: string }) => {
   }
 
   return (
-    <main className="detail-page">
+    <main ref={detailRoot} className="detail-page">
       <nav className="detail-toolbar" aria-label="Median toiminnot">
         <button
           className="icon-button"
