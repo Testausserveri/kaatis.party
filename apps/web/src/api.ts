@@ -24,11 +24,16 @@ export const getMediaPage = (
   return getJson<MediaPage>(`/api/media?${parameters.toString()}`, signal)
 }
 
-export const searchMedia = (query: string, signal?: AbortSignal) => {
+export const searchMedia = (
+  query: string,
+  cursor: string | null,
+  signal?: AbortSignal,
+) => {
   const parameters = new URLSearchParams({
     q: query,
     limit: '80',
   })
+  if (cursor) parameters.set('cursor', cursor)
   return getJson<SearchResponse>(`/api/search?${parameters.toString()}`, signal)
 }
 

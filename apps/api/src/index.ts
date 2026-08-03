@@ -6,6 +6,7 @@ import rateLimit from '@fastify/rate-limit'
 import type {
   InternalUploadRequest,
   MediaPage,
+  SearchResponse,
 } from '@kaatis/contracts'
 import { Type } from '@sinclair/typebox'
 import Fastify from 'fastify'
@@ -17,11 +18,20 @@ import {
 import {
   createQdrantClient,
 } from '../../../src/search/qdrant.js'
+import {
+  decodeSearchCursor,
+  encodeSearchCursor,
+  searchContextFingerprint,
+} from '../../../src/search/cursor.js'
 import { safeMediaFilename } from '../../../src/search/media.js'
 import { getApiConfig } from './config.ts'
 import { createJobRunner } from './jobs.ts'
 import { createLegacyIndex } from './legacyIndex.ts'
-import { createMediaSearch } from './search.ts'
+import {
+  createMediaSearch,
+  SemanticSearchUnavailableError,
+  type SearchMode,
+} from './search.ts'
 import { ingestUpload } from './uploads.ts'
 
 const config = getApiConfig()
@@ -180,6 +190,7 @@ app.get('/api/search', {
     querystring: Type.Object({
       q: Type.String({ minLength: 2, maxLength: config.maxQueryLength }),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 80 })),
+      cursor: Type.Optional(Type.String({ maxLength: 1024 })),
       type: Type.Optional(Type.Union([
         Type.Literal('image'),
         Type.Literal('video'),
@@ -188,24 +199,69 @@ app.get('/api/search', {
       exclude: Type.Optional(Type.String({ maxLength: 12000 })),
     }),
   },
-}, async (request) => {
+}, async (request, reply): Promise<SearchResponse> => {
   const query = request.query as {
     q: string
     limit?: number
+    cursor?: string
     type?: string
     exclude?: string
   }
-  return search.search({
-    query: query.q.trim().replace(/\s+/g, ' '),
-    limit: positiveInteger(query.limit, 60, 80),
+  const normalizedQuery = query.q.trim().replace(/\s+/g, ' ')
+  const excludedFilenames = new Set(
+    String(query.exclude || '')
+      .split(',')
+      .map((filename) => filename.trim())
+      .filter(Boolean),
+  )
+  const fingerprint = searchContextFingerprint({
+    query: normalizedQuery,
     type: query.type,
-    excludedFilenames: new Set(
-      String(query.exclude || '')
-        .split(',')
-        .map((filename) => filename.trim())
-        .filter(Boolean),
-    ),
+    excludedFilenames,
   })
+  let offset = 0
+  let mode: SearchMode = 'auto'
+  if (query.cursor) {
+    try {
+      const decoded = decodeSearchCursor({
+        value: query.cursor,
+        fingerprint,
+        maxOffset: config.maxSearchResults,
+      })
+      offset = decoded.offset
+      mode = decoded.mode
+    } catch {
+      return reply.code(400).send({ error: 'invalid_cursor' }) as never
+    }
+  }
+
+  try {
+    const page = await search.search({
+      query: normalizedQuery,
+      limit: positiveInteger(query.limit, 60, 80),
+      offset,
+      maxResults: config.maxSearchResults,
+      mode,
+      type: query.type,
+      excludedFilenames,
+    })
+    const { hasMore, mode: resolvedMode, ...response } = page
+    return {
+      ...response,
+      nextCursor: hasMore
+        ? encodeSearchCursor({
+          fingerprint,
+          offset: offset + response.results.length,
+          mode: resolvedMode,
+        })
+        : null,
+    }
+  } catch (error) {
+    if (error instanceof SemanticSearchUnavailableError) {
+      return reply.code(503).send({ error: 'search_unavailable' }) as never
+    }
+    throw error
+  }
 })
 
 app.get('/api/media/:filename/similar', {

@@ -1,39 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  MediaItem,
-  SearchMediaItem,
-} from '@kaatis/contracts'
 
 import {
   getMediaPage,
   searchMedia,
 } from './api.ts'
-
-type GalleryItem = MediaItem | SearchMediaItem
-
-interface MediaSnapshot {
-  items: GalleryItem[]
-  cursor: string | null
-}
-
-const cache = new Map<string, MediaSnapshot>()
-const cacheLimit = 20
-
-const cachedSnapshot = (query: string) => cache.get(query)
-
-const storeSnapshot = (query: string, snapshot: MediaSnapshot) => {
-  cache.delete(query)
-  cache.set(query, snapshot)
-  while (cache.size > cacheLimit) {
-    const oldest = cache.keys().next().value
-    if (oldest === undefined) break
-    cache.delete(oldest)
-  }
-}
+import {
+  appendUniqueItems,
+  mediaSnapshotCache,
+  type GalleryItem,
+} from './mediaCache.ts'
 
 export const useMedia = (query: string, enabled = true) => {
   const normalizedQuery = query.trim()
-  const initial = cachedSnapshot(normalizedQuery)
+  const initial = mediaSnapshotCache.get(normalizedQuery)
   const [items, setItems] = useState<GalleryItem[]>(initial?.items || [])
   const [cursor, setCursor] = useState<string | null>(initial?.cursor || null)
   const [loading, setLoading] = useState(!initial)
@@ -44,19 +23,21 @@ export const useMedia = (query: string, enabled = true) => {
     nextCursor: string | null,
     replace: boolean,
   ) => {
-    if (!enabled || normalizedQuery) return
+    if (!enabled) return
     request.current?.abort()
     const controller = new AbortController()
     request.current = controller
     setLoading(true)
     setError(false)
     try {
-      const page = await getMediaPage(nextCursor, controller.signal)
+      const page = normalizedQuery
+        ? await searchMedia(normalizedQuery, nextCursor, controller.signal)
+        : await getMediaPage(nextCursor, controller.signal)
       setItems((current) => {
         const nextItems = replace
           ? page.results
-          : [...current, ...page.results]
-        storeSnapshot(normalizedQuery, {
+          : appendUniqueItems(current, page.results)
+        mediaSnapshotCache.set(normalizedQuery, {
           items: nextItems,
           cursor: page.nextCursor,
         })
@@ -78,7 +59,7 @@ export const useMedia = (query: string, enabled = true) => {
       return
     }
 
-    const cached = cachedSnapshot(normalizedQuery)
+    const cached = mediaSnapshotCache.get(normalizedQuery)
     if (cached) {
       setItems(cached.items)
       setCursor(cached.cursor)
@@ -102,43 +83,31 @@ export const useMedia = (query: string, enabled = true) => {
       return
     }
 
-    const controller = new AbortController()
-    request.current = controller
+    setItems([])
+    setCursor(null)
     setLoading(true)
     setError(false)
-    const timer = window.setTimeout(async () => {
-      try {
-        const result = await searchMedia(normalizedQuery, controller.signal)
-        setItems(result.results)
-        setCursor(null)
-        storeSnapshot(normalizedQuery, {
-          items: result.results,
-          cursor: null,
-        })
-      } catch (currentError) {
-        if ((currentError as Error).name !== 'AbortError') setError(true)
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
-      }
+    const timer = window.setTimeout(() => {
+      void loadPage(null, true)
     }, 600)
 
     return () => {
       window.clearTimeout(timer)
-      controller.abort()
+      request.current?.abort()
     }
   }, [enabled, loadPage, normalizedQuery])
 
   const loadMore = useCallback(() => {
-    if (enabled && !loading && cursor && !normalizedQuery) {
+    if (enabled && !loading && !error && cursor) {
       void loadPage(cursor, false)
     }
-  }, [cursor, enabled, loadPage, loading, normalizedQuery])
+  }, [cursor, enabled, error, loadPage, loading])
 
   return {
     items,
     loading,
     error,
-    hasMore: Boolean(cursor) && !normalizedQuery,
+    hasMore: Boolean(cursor) && !error,
     loadMore,
   }
 }

@@ -43,6 +43,7 @@ export interface MediaPage {
 export interface SearchResponse {
   query: string
   count: number
+  nextCursor: string | null
   degraded: boolean
   results: SearchMediaItem[]
 }

@@ -74,6 +74,7 @@ Kopioi `.env.example` tiedostoksi `.env` ja täytä salaisuudet.
 | `UPLOAD_DIR` | Alkuperäisten tiedostojen polku, oletus `public` |
 | `PREVIEW_ROOT` | Esikatselujen polku, oletus `data/thumbs` |
 | `QDRANT_URL` | Qdrantin sisäinen osoite |
+| `SEARCH_MAX_RESULTS` | Haun suurin sivutettava tulosmäärä, oletus `1000` |
 | `HTTP_PORT` | Caddyn localhost portti, oletus `8089` |
 | `LEGACY_HTTP_PORT` | Legacy Caddyn localhost portti, oletus `8189` |
 
@@ -118,6 +119,9 @@ FTS5 hakee tarkat otsikko, tiedostonimi ja tekijäosumat. Gemini muuntaa kyselyn
 Tulokset yhdistetään painotetulla reciprocal rank fusion menetelmällä. FTS5 paino on `1.25`. Kuvien ja videoiden semanttisten listojen paino on `1.0`. Jos Gemini tai Qdrant ei vastaa, API palauttaa FTS5 tulokset kentällä `degraded: true`.
 
 Hakukyselyn embedding tallennetaan pysyvästi Qdrantiin. Sama kysely ei kuluta Geminiä uudelleen.
+
+Hakutulokset palautetaan enintään 80 tuloksen sivuina. Selain lataa seuraavan
+sivun automaattisesti ja käyttää API:n palauttamaa kyselyyn sidottua cursoria.
 
 ## Discord
 

@@ -39,6 +39,32 @@ interface Store {
   mediaByFilename: (filename: string) => Record<string, unknown> | null
 }
 
+export type SearchMode = 'auto' | 'semantic' | 'lexical'
+
+interface SemanticLists {
+  image: SearchMediaItem[]
+  video: SearchMediaItem[]
+}
+
+interface SearchPage extends Omit<SearchResponse, 'nextCursor'> {
+  hasMore: boolean
+  mode: Exclude<SearchMode, 'auto'>
+}
+
+interface SemanticSearchOptions {
+  query: string
+  limit: number
+  type?: string
+  excludedFilenames?: Set<string>
+}
+
+export class SemanticSearchUnavailableError extends Error {
+  constructor() {
+    super('semantic_search_unavailable')
+    this.name = 'SemanticSearchUnavailableError'
+  }
+}
+
 const normalizedRrf = (rank: number, constant = 60) => (
   (constant + 1) / (constant + rank)
 )
@@ -84,7 +110,7 @@ const hydratePoints = ({
   })
 }
 
-const mergeRrf = ({
+export const mergeRrf = ({
   lists,
   limit,
 }: {
@@ -221,26 +247,25 @@ export const createMediaSearch = ({
   config,
   store,
   logger,
+  client: suppliedClient,
+  semanticSearch,
 }: {
   config: ApiConfig
   store: Store
   logger: {
     error: (value: unknown, message?: string) => void
   }
+  client?: ReturnType<typeof createQdrantClient>
+  semanticSearch?: (options: SemanticSearchOptions) => Promise<SemanticLists>
 }) => {
-  const client = createQdrantClient(config)
+  const client = suppliedClient || createQdrantClient(config)
 
-  const semanticLists = async ({
+  const loadSemanticLists = semanticSearch || (async ({
     query,
     limit,
     type,
     excludedFilenames = new Set<string>(),
-  }: {
-    query: string
-    limit: number
-    type?: string
-    excludedFilenames?: Set<string>
-  }) => {
+  }: SemanticSearchOptions) => {
     const vector = await createQueryVector({ query, config, client })
     const points = await querySemanticMediaLists({
       client,
@@ -269,20 +294,33 @@ export const createMediaSearch = ({
         type,
       }),
     }
-  }
+  })
 
   const search = async ({
     query,
     limit,
+    offset = 0,
+    maxResults = config.maxSearchResults,
+    mode = 'auto',
     type,
     excludedFilenames = new Set<string>(),
   }: {
     query: string
     limit: number
+    offset?: number
+    maxResults?: number
+    mode?: SearchMode
     type?: string
     excludedFilenames?: Set<string>
-  }): Promise<SearchResponse> => {
-    const lexical = store.searchMedia(query, limit * 2)
+  }): Promise<SearchPage> => {
+    const pageLimit = Math.min(limit, Math.max(0, maxResults - offset))
+    const requestedEnd = offset + pageLimit
+    const rankingLimit = Math.min(maxResults, requestedEnd + 1)
+    const sourceLimit = Math.min(
+      maxResults * 2,
+      Math.max(limit * 2, requestedEnd * 2),
+    )
+    const lexical = store.searchMedia(query, sourceLimit)
       .filter((row) => !type || row.media_type === type)
       .filter((row) => !excludedFilenames.has(String(row.filename)))
       .map((row) => ({
@@ -292,40 +330,46 @@ export const createMediaSearch = ({
         score: 0,
       }))
 
-    let semantic = {
+    let semantic: SemanticLists = {
       image: [] as SearchMediaItem[],
       video: [] as SearchMediaItem[],
     }
-    let degraded = false
-    try {
-      semantic = await semanticLists({
-        query,
-        limit: limit * 2,
-        type,
-        excludedFilenames,
-      })
-    } catch (error) {
-      degraded = true
-      logger.error({
-        event: 'semantic_search_unavailable',
-        query,
-        error: error instanceof Error ? error.message : String(error),
-      })
+    let resolvedMode: Exclude<SearchMode, 'auto'> = 'lexical'
+    if (mode !== 'lexical') {
+      try {
+        semantic = await loadSemanticLists({
+          query,
+          limit: sourceLimit,
+          type,
+          excludedFilenames,
+        })
+        resolvedMode = 'semantic'
+      } catch (error) {
+        logger.error({
+          event: 'semantic_search_unavailable',
+          query,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        if (mode === 'semantic') throw new SemanticSearchUnavailableError()
+      }
     }
 
-    const results = mergeRrf({
+    const ranked = mergeRrf({
       lists: [
         { items: lexical, weight: 1.25 },
         { items: semantic.image, weight: 1 },
         { items: semantic.video, weight: 1 },
       ],
-      limit,
+      limit: rankingLimit,
     })
+    const results = ranked.slice(offset, requestedEnd)
 
     return {
       query,
       count: results.length,
-      degraded,
+      degraded: resolvedMode === 'lexical',
+      hasMore: requestedEnd < maxResults && ranked.length > requestedEnd,
+      mode: resolvedMode,
       results,
     }
   }

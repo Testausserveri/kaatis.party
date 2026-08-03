@@ -37,6 +37,7 @@ export const getSearchConfig = (env = process.env) => {
     embeddingInputVersion: env.SEARCH_EMBEDDING_INPUT_VERSION || 'image-metadata-v2',
     searchPort: numberFromEnv(env.SEARCH_API_PORT, 3000),
     maxSearchLimit: numberFromEnv(env.SEARCH_MAX_LIMIT, 100),
+    maxSearchResults: numberFromEnv(env.SEARCH_MAX_RESULTS, 1000),
     defaultSearchLimit: numberFromEnv(env.SEARCH_DEFAULT_LIMIT, 30),
     maxQueryLength: numberFromEnv(env.SEARCH_MAX_QUERY_LENGTH, 500),
     minQueryLength: numberFromEnv(env.SEARCH_MIN_QUERY_LENGTH, 2),
